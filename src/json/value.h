@@ -30,8 +30,9 @@ struct Object {
     void set(std::string_view key, Value value);
 
     bool   operator==(const Object&) const;
-    std::size_t size()  const { return entries.size(); }
-    bool        empty() const { return entries.empty(); }
+    // Defined below Value: libc++ needs Value complete to instantiate these.
+    std::size_t size()  const;
+    bool        empty() const;
 };
 
 // JSON array — a plain vector of Values.
@@ -118,6 +119,9 @@ private:
     void destroy();
     void copy_from(const Value&);
 };
+
+inline std::size_t Object::size()  const { return entries.size(); }
+inline bool        Object::empty() const { return entries.empty(); }
 
 // Convenience factories.
 inline Value null_value()   { return Value{}; }
