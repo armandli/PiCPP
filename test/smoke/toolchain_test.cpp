@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 #include <simdjson.h>
 
+#include <util/aliases.h>
+
 // Verifies every third-party dependency compiles and links under C++26.
 
 TEST(Toolchain, CppStandardIs26OrNewer) {
@@ -17,8 +19,8 @@ TEST(Toolchain, SimdjsonParsesObject) {
   simdjson::dom::parser parser;
   simdjson::dom::element doc;
   ASSERT_FALSE(parser.parse(simdjson::padded_string(
-      std::string_view(R"({"role":"user","n":3})"))).get(doc));
-  std::string_view role;
+      strv(R"({"role":"user","n":3})"))).get(doc));
+  strv role;
   int64_t n = 0;
   ASSERT_FALSE(doc["role"].get(role));
   ASSERT_FALSE(doc["n"].get(n));
@@ -32,10 +34,10 @@ TEST(Toolchain, FtxuiRendersToString) {
   f::Screen screen = f::Screen::Create(f::Dimension::Fixed(5),
                                        f::Dimension::Fixed(1));
   f::Render(screen, el);
-  EXPECT_NE(screen.ToString().find("hello"), std::string::npos);
+  EXPECT_NE(screen.ToString().find("hello"), str::npos);
 }
 
 TEST(Toolchain, CurlReportsVersion) {
-  std::string_view version = curl_version();
-  EXPECT_NE(version.find("libcurl"), std::string_view::npos);
+  strv version = curl_version();
+  EXPECT_NE(version.find("libcurl"), strv::npos);
 }

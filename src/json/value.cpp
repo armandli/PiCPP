@@ -2,25 +2,27 @@
 
 #include <cassert>
 
+#include <util/aliases.h>
+
 namespace pi::json {
 
 // ---------------------------------------------------------------------------
 // Object
 // ---------------------------------------------------------------------------
 
-Value* Object::find(std::string_view key) {
+Value* Object::find(strv key) {
     // TODO(M1): linear scan entries for key; return pointer to value or nullptr.
     (void)key;
     return nullptr;
 }
 
-const Value* Object::find(std::string_view key) const {
+const Value* Object::find(strv key) const {
     // TODO(M1): linear scan entries for key; return const pointer or nullptr.
     (void)key;
     return nullptr;
 }
 
-Value& Object::operator[](std::string_view key) {
+Value& Object::operator[](strv key) {
     // TODO(M1): find key; if absent, append {key, null} and return new value.
     (void)key;
     // Stub: crash loudly so the user knows this is not implemented.
@@ -28,7 +30,7 @@ Value& Object::operator[](std::string_view key) {
     return entries.front().second;  // unreachable
 }
 
-void Object::set(std::string_view key, Value value) {
+void Object::set(strv key, Value value) {
     // TODO(M1): find key and overwrite; if absent, append a new entry.
     (void)key; (void)value;
 }
@@ -61,7 +63,7 @@ void Value::copy_from(const Value& o) {
     case Kind::Bool:   mData.boolean = o.mData.boolean;                    break;
     case Kind::Int:    mData.integer = o.mData.integer;                    break;
     case Kind::Double: mData.real    = o.mData.real;                       break;
-    case Kind::String: mData.string  = new std::string(*o.mData.string);   break;
+    case Kind::String: mData.string  = new str(*o.mData.string);   break;
     case Kind::Array:  mData.array   = new Array(*o.mData.array);          break;
     case Kind::Object: mData.object  = new Object(*o.mData.object);        break;
     }
@@ -74,7 +76,7 @@ void Value::copy_from(const Value& o) {
 Value::Value()
     : mKind(Kind::Null), mData{} {}
 
-Value::Value(std::nullptr_t)
+Value::Value(s::nullptr_t)
     : mKind(Kind::Null), mData{} {}
 
 Value::Value(bool b)
@@ -97,29 +99,29 @@ Value::Value(double d)
     mData.real = d;
 }
 
-Value::Value(std::string s)
+Value::Value(str text)
     : mKind(Kind::String), mData{} {
-    mData.string = new std::string(std::move(s));
+    mData.string = new str(s::move(text));
 }
 
-Value::Value(std::string_view s)
+Value::Value(strv text)
     : mKind(Kind::String), mData{} {
-    mData.string = new std::string(s);
+    mData.string = new str(text);
 }
 
-Value::Value(const char* s)
+Value::Value(const char* text)
     : mKind(Kind::String), mData{} {
-    mData.string = new std::string(s);
+    mData.string = new str(text);
 }
 
 Value::Value(Array a)
     : mKind(Kind::Array), mData{} {
-    mData.array = new Array(std::move(a));
+    mData.array = new Array(s::move(a));
 }
 
 Value::Value(Object o)
     : mKind(Kind::Object), mData{} {
-    mData.object = new Object(std::move(o));
+    mData.object = new Object(s::move(o));
 }
 
 Value::Value(const Value& o)
@@ -160,25 +162,25 @@ Value::~Value() {
 // Value — type extraction
 // ---------------------------------------------------------------------------
 
-std::optional<bool> Value::as_bool() const {
+opt<bool> Value::as_bool() const {
     // TODO(M1): return mData.boolean iff mKind == Kind::Bool.
     (void)this;
-    return std::nullopt;
+    return s::nullopt;
 }
 
-std::optional<int64_t> Value::as_int() const {
+opt<int64_t> Value::as_int() const {
     // TODO(M1): return mData.integer iff mKind == Kind::Int.
-    return std::nullopt;
+    return s::nullopt;
 }
 
-std::optional<double> Value::as_double() const {
+opt<double> Value::as_double() const {
     // TODO(M1): return mData.real iff mKind == Kind::Double.
-    return std::nullopt;
+    return s::nullopt;
 }
 
-std::optional<std::string_view> Value::as_string() const {
+opt<strv> Value::as_string() const {
     // TODO(M1): return *mData.string iff mKind == Kind::String.
-    return std::nullopt;
+    return s::nullopt;
 }
 
 Array* Value::as_array() {
@@ -205,26 +207,26 @@ const Object* Value::as_object() const {
 // Value — object helpers
 // ---------------------------------------------------------------------------
 
-Value& Value::operator[](std::string_view key) {
+Value& Value::operator[](strv key) {
     // TODO(M1): assert is_object(), delegate to mData.object->operator[](key).
     (void)key;
     assert(false && "Value::operator[](string_view) not implemented");
     return *this;  // unreachable
 }
 
-Value* Value::find(std::string_view key) {
+Value* Value::find(strv key) {
     // TODO(M1): assert is_object(), delegate to mData.object->find(key).
     (void)key;
     return nullptr;
 }
 
-const Value* Value::find(std::string_view key) const {
+const Value* Value::find(strv key) const {
     // TODO(M1): assert is_object(), delegate to mData.object->find(key).
     (void)key;
     return nullptr;
 }
 
-void Value::set(std::string_view key, Value val) {
+void Value::set(strv key, Value val) {
     // TODO(M1): assert is_object(), delegate to mData.object->set(key, val).
     (void)key; (void)val;
 }
@@ -233,14 +235,14 @@ void Value::set(std::string_view key, Value val) {
 // Value — array helpers
 // ---------------------------------------------------------------------------
 
-Value& Value::operator[](std::size_t index) {
+Value& Value::operator[](s::size_t index) {
     // TODO(M1): assert is_array(), return (*mData.array)[index].
     (void)index;
     assert(false && "Value::operator[](size_t) not implemented");
     return *this;  // unreachable
 }
 
-const Value& Value::operator[](std::size_t index) const {
+const Value& Value::operator[](s::size_t index) const {
     // TODO(M1): assert is_array(), return (*mData.array)[index].
     (void)index;
     assert(false && "Value::operator[](size_t) const not implemented");
@@ -256,7 +258,7 @@ void Value::push_back(Value val) {
 // Value — common
 // ---------------------------------------------------------------------------
 
-std::size_t Value::size() const {
+s::size_t Value::size() const {
     // TODO(M1): array → mData.array->size(); object → mData.object->size(); else 0.
     return 0;
 }

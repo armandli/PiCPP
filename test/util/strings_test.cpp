@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <util/aliases.h>
+
 using namespace pi::util;
 
 // ---------------------------------------------------------------------------
@@ -127,22 +129,22 @@ TEST(SplitLines, EmptyLines) {
 // ---------------------------------------------------------------------------
 
 TEST(JoinSV, MultipleElements) {
-    std::vector<std::string_view> parts = {"a", "b", "c"};
+    vec<strv> parts = {"a", "b", "c"};
     EXPECT_EQ(join(parts, ", "), "a, b, c");
 }
 
 TEST(JoinSV, SingleElement) {
-    std::vector<std::string_view> parts = {"only"};
+    vec<strv> parts = {"only"};
     EXPECT_EQ(join(parts, ","), "only");
 }
 
 TEST(JoinSV, EmptyVector) {
-    std::vector<std::string_view> parts;
+    vec<strv> parts;
     EXPECT_EQ(join(parts, ","), "");
 }
 
 TEST(JoinSV, EmptySeparator) {
-    std::vector<std::string_view> parts = {"a", "b", "c"};
+    vec<strv> parts = {"a", "b", "c"};
     EXPECT_EQ(join(parts, ""), "abc");
 }
 
@@ -151,12 +153,12 @@ TEST(JoinSV, EmptySeparator) {
 // ---------------------------------------------------------------------------
 
 TEST(JoinStr, MultipleElements) {
-    std::vector<std::string> parts = {"foo", "bar", "baz"};
+    vec<str> parts = {"foo", "bar", "baz"};
     EXPECT_EQ(join(parts, "-"), "foo-bar-baz");
 }
 
 TEST(JoinStr, EmptyVector) {
-    std::vector<std::string> parts;
+    vec<str> parts;
     EXPECT_EQ(join(parts, "-"), "");
 }
 

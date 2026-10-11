@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <util/aliases.h>
+
 using namespace pi::json;
 
 // ===========================================================================
@@ -59,7 +61,7 @@ TEST(ValueType, Double) {
 }
 
 TEST(ValueType, String) {
-    Value v(std::string{"hello"});
+    Value v(str{"hello"});
     EXPECT_TRUE(v.is_string());
 }
 
@@ -175,7 +177,7 @@ TEST(ValueCopy, CopyString) {
 TEST(ValueCopy, CopyArray) {
     Array arr;
     arr.push_back(Value(int64_t{1}));
-    Value a(std::move(arr));
+    Value a(s::move(arr));
     Value b = a;
     ASSERT_NE(b.as_array(), nullptr);
     EXPECT_EQ(b.as_array()->size(), 1u);
@@ -183,7 +185,7 @@ TEST(ValueCopy, CopyArray) {
 
 TEST(ValueMove, MoveString) {
     Value a("hello");
-    Value b = std::move(a);
+    Value b = s::move(a);
     EXPECT_TRUE(a.is_null());  // moved-from is null
     ASSERT_TRUE(b.as_string().has_value());
     EXPECT_EQ(*b.as_string(), "hello");
@@ -247,8 +249,8 @@ TEST(ValueArray, PushBackAndAccess) {
     arr.push_back(Value(int64_t{10}));
     arr.push_back(Value(int64_t{20}));
     EXPECT_EQ(arr.size(), 2u);
-    EXPECT_EQ(*arr[std::size_t{0}].as_int(), 10);
-    EXPECT_EQ(*arr[std::size_t{1}].as_int(), 20);
+    EXPECT_EQ(*arr[s::size_t{0}].as_int(), 10);
+    EXPECT_EQ(*arr[s::size_t{1}].as_int(), 20);
 }
 
 TEST(ValueArray, Size) {
@@ -294,7 +296,7 @@ TEST(ValueEq, NestedArrayEquality) {
     Array a1, a2;
     a1.push_back(Value(int64_t{1}));
     a2.push_back(Value(int64_t{1}));
-    EXPECT_EQ(Value(std::move(a1)), Value(std::move(a2)));
+    EXPECT_EQ(Value(s::move(a1)), Value(s::move(a2)));
 }
 
 TEST(ValueEq, ObjectEquality) {
@@ -394,9 +396,9 @@ TEST(Parse, ArrayOfInts) {
     ASSERT_TRUE(r.has_value());
     ASSERT_TRUE(r->is_array());
     EXPECT_EQ(r->size(), 3u);
-    EXPECT_EQ(*r->operator[](std::size_t{0}).as_int(), 1);
-    EXPECT_EQ(*r->operator[](std::size_t{1}).as_int(), 2);
-    EXPECT_EQ(*r->operator[](std::size_t{2}).as_int(), 3);
+    EXPECT_EQ(*r->operator[](s::size_t{0}).as_int(), 1);
+    EXPECT_EQ(*r->operator[](s::size_t{1}).as_int(), 2);
+    EXPECT_EQ(*r->operator[](s::size_t{2}).as_int(), 3);
 }
 
 TEST(Parse, EmptyObject) {
@@ -480,8 +482,8 @@ TEST(ToJson, NegativeInt) {
 
 TEST(ToJson, Double) {
     // Shortest round-trip: 3.14 must parse back to exactly 3.14.
-    std::string s = to_json(Value(3.14));
-    auto r = parse(s);
+    str text = to_json(Value(3.14));
+    auto r = parse(text);
     ASSERT_TRUE(r.has_value());
     ASSERT_TRUE(r->as_double().has_value());
     EXPECT_DOUBLE_EQ(*r->as_double(), 3.14);
@@ -492,36 +494,36 @@ TEST(ToJson, SimpleString) {
 }
 
 TEST(ToJson, StringEscapesQuote) {
-    EXPECT_EQ(to_json(Value(std::string{R"(say "hi")"})), R"("say \"hi\"")");
+    EXPECT_EQ(to_json(Value(str{R"(say "hi")"})), R"("say \"hi\"")");
 }
 
 TEST(ToJson, StringEscapesBackslash) {
-    EXPECT_EQ(to_json(Value(std::string{"a\\b"})), R"("a\\b")");
+    EXPECT_EQ(to_json(Value(str{"a\\b"})), R"("a\\b")");
 }
 
 TEST(ToJson, StringEscapesNewline) {
-    EXPECT_EQ(to_json(Value(std::string{"a\nb"})), R"("a\nb")");
+    EXPECT_EQ(to_json(Value(str{"a\nb"})), R"("a\nb")");
 }
 
 TEST(ToJson, StringEscapesTab) {
-    EXPECT_EQ(to_json(Value(std::string{"a\tb"})), R"("a\tb")");
+    EXPECT_EQ(to_json(Value(str{"a\tb"})), R"("a\tb")");
 }
 
 TEST(ToJson, StringEscapesCarriageReturn) {
-    EXPECT_EQ(to_json(Value(std::string{"a\rb"})), R"("a\rb")");
+    EXPECT_EQ(to_json(Value(str{"a\rb"})), R"("a\rb")");
 }
 
 TEST(ToJson, StringEscapesControlChar) {
     // U+0001 must be written as .
-    std::string s = to_json(Value(std::string{"\x01"}));
-    EXPECT_EQ(s, R"("")");
+    str text = to_json(Value(str{"\x01"}));
+    EXPECT_EQ(text, R"("")");
 }
 
 TEST(ToJson, StringPassesThroughUtf8) {
     // Non-ASCII UTF-8 bytes must be passed through, not escaped.
     // U+00E9 (é) = 0xC3 0xA9
-    std::string input = "caf\xC3\xA9";
-    std::string expected = "\"caf\xC3\xA9\"";
+    str input = "caf\xC3\xA9";
+    str expected = "\"caf\xC3\xA9\"";
     EXPECT_EQ(to_json(Value(input)), expected);
 }
 
@@ -534,7 +536,7 @@ TEST(ToJson, ArrayOfInts) {
     a.push_back(Value(int64_t{1}));
     a.push_back(Value(int64_t{2}));
     a.push_back(Value(int64_t{3}));
-    EXPECT_EQ(to_json(Value(std::move(a))), "[1,2,3]");
+    EXPECT_EQ(to_json(Value(s::move(a))), "[1,2,3]");
 }
 
 TEST(ToJson, EmptyObject) {
@@ -553,14 +555,14 @@ TEST(ToJson, ObjectKeyOrderPreserved) {
     obj.set("z", Value(int64_t{3}));
     obj.set("a", Value(int64_t{1}));
     obj.set("m", Value(int64_t{2}));
-    std::string s = to_json(obj);
+    str text = to_json(obj);
     // z must appear before a, a before m.
-    auto zpos = s.find("\"z\"");
-    auto apos = s.find("\"a\"");
-    auto mpos = s.find("\"m\"");
-    ASSERT_NE(zpos, std::string::npos);
-    ASSERT_NE(apos, std::string::npos);
-    ASSERT_NE(mpos, std::string::npos);
+    auto zpos = text.find("\"z\"");
+    auto apos = text.find("\"a\"");
+    auto mpos = text.find("\"m\"");
+    ASSERT_NE(zpos, str::npos);
+    ASSERT_NE(apos, str::npos);
+    ASSERT_NE(mpos, str::npos);
     EXPECT_LT(zpos, apos);
     EXPECT_LT(apos, mpos);
 }
@@ -605,7 +607,7 @@ TEST(RoundTrip, Double) {
 }
 
 TEST(RoundTrip, StringWithSpecialChars) {
-    std::string raw = "tab:\there\nnewline \"quote\" back\\slash";
+    str raw = "tab:\there\nnewline \"quote\" back\\slash";
     Value v(raw);
     auto r = parse(to_json(v));
     ASSERT_TRUE(r.has_value());
@@ -619,10 +621,10 @@ TEST(RoundTrip, NestedStructure) {
     arr.push_back(Value(int64_t{1}));
     arr.push_back(Value("two"));
     arr.push_back(Value(true));
-    obj.set("list", Value(std::move(arr)));
+    obj.set("list", Value(s::move(arr)));
     obj.set("n", Value());
 
-    std::string json = to_json(obj);
+    str json = to_json(obj);
     auto r = parse(json);
     ASSERT_TRUE(r.has_value());
     EXPECT_EQ(*r, obj);

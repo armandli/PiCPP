@@ -2,6 +2,8 @@
 
 #include <simdjson.h>
 
+#include <util/aliases.h>
+
 namespace pi::json {
 
 // Recursive helper: simdjson DOM element → owned Value.
@@ -13,14 +15,14 @@ namespace pi::json {
     return {};
 }
 
-std::expected<Value, ParseError> parse(std::string_view input) {
+s::expected<Value, ParseError> parse(strv input) {
     // TODO(M1):
     //   simdjson::dom::parser parser;
     //   auto result = parser.parse(simdjson::padded_string(input));
-    //   if (result.error()) return std::unexpected(ParseError{...});
+    //   if (result.error()) return s::unexpected(ParseError{...});
     //   return convert(result.value());
     (void)input;
-    return std::unexpected(ParseError{"not implemented", 0});
+    return s::unexpected(ParseError{"not implemented", 0});
 }
 
 }  // namespace pi::json

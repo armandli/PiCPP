@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <util/aliases.h>
+
 using namespace pi::util;
 
 // ---------------------------------------------------------------------------
@@ -12,92 +14,110 @@ using namespace pi::util;
 // ---------------------------------------------------------------------------
 
 TEST(DecodeUtf8, ASCII) {
-    std::string s = "A";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    ASSERT_TRUE(cp.has_value());
-    EXPECT_EQ(*cp, U'A');
-    EXPECT_EQ(pos, 1u);
+    str text = "A";
+    auto d = decode_utf8(text, 0);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->code_point, U'A');
+    EXPECT_EQ(d->next, 1u);
 }
 
 TEST(DecodeUtf8, TwoByteSequence) {
     // U+00E9 LATIN SMALL LETTER E WITH ACUTE → 0xC3 0xA9
-    std::string s = "\xC3\xA9";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    ASSERT_TRUE(cp.has_value());
-    EXPECT_EQ(*cp, U'é');
-    EXPECT_EQ(pos, 2u);
+    str text = "\xC3\xA9";
+    auto d = decode_utf8(text, 0);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->code_point, U'é');
+    EXPECT_EQ(d->next, 2u);
 }
 
 TEST(DecodeUtf8, ThreeByteSequence) {
     // U+4E2D CJK "middle" → 0xE4 0xB8 0xAD
-    std::string s = "\xE4\xB8\xAD";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    ASSERT_TRUE(cp.has_value());
-    EXPECT_EQ(*cp, U'中');
-    EXPECT_EQ(pos, 3u);
+    str text = "\xE4\xB8\xAD";
+    auto d = decode_utf8(text, 0);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->code_point, U'中');
+    EXPECT_EQ(d->next, 3u);
 }
 
 TEST(DecodeUtf8, FourByteSequence) {
     // U+1F600 GRINNING FACE → 0xF0 0x9F 0x98 0x80
-    std::string s = "\xF0\x9F\x98\x80";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    ASSERT_TRUE(cp.has_value());
-    EXPECT_EQ(*cp, U'\U0001F600');
-    EXPECT_EQ(pos, 4u);
+    str text = "\xF0\x9F\x98\x80";
+    auto d = decode_utf8(text, 0);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->code_point, U'\U0001F600');
+    EXPECT_EQ(d->next, 4u);
 }
 
 TEST(DecodeUtf8, InvalidLeadByte) {
     // 0xFF is never valid in UTF-8.
-    std::string s = "\xFF";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    EXPECT_FALSE(cp.has_value());
-    EXPECT_EQ(pos, 0u);  // pos must be unchanged
+    str text = "\xFF";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
 }
 
 TEST(DecodeUtf8, OverlongEncoding) {
     // Overlong encoding of U+0000: 0xC0 0x80 — not valid.
-    std::string s = "\xC0\x80";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    EXPECT_FALSE(cp.has_value());
-    EXPECT_EQ(pos, 0u);
+    str text = "\xC0\x80";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
+}
+
+TEST(DecodeUtf8, OverlongFourByte) {
+    // Overlong 4-byte encoding of U+0000: 0xF0 0x80 0x80 0x80 — not valid.
+    str text = "\xF0\x80\x80\x80";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
 }
 
 TEST(DecodeUtf8, SurrogateHalf) {
     // U+D800 encoded as 3-byte: 0xED 0xA0 0x80 — not valid in UTF-8.
-    std::string s = "\xED\xA0\x80";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    EXPECT_FALSE(cp.has_value());
-    EXPECT_EQ(pos, 0u);
+    str text = "\xED\xA0\x80";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
+}
+
+TEST(DecodeUtf8, AboveMaxCodePoint) {
+    // 0xF4 0x90 0x80 0x80 would be U+110000, beyond the Unicode range.
+    str text = "\xF4\x90\x80\x80";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
 }
 
 TEST(DecodeUtf8, TruncatedSequence) {
     // Two-byte lead byte but only one byte available.
-    std::string s = "\xC3";
-    std::size_t pos = 0;
-    auto cp = decode_utf8(s, pos);
-    EXPECT_FALSE(cp.has_value());
-    EXPECT_EQ(pos, 0u);
+    str text = "\xC3";
+    EXPECT_FALSE(decode_utf8(text, 0).has_value());
 }
 
 TEST(DecodeUtf8, AdvancesThroughString) {
-    // Decode "AB" character by character.
-    std::string s = "AB";
-    std::size_t pos = 0;
-    auto first = decode_utf8(s, pos);
+    // Decode "AB" character by character, feeding next back in as pos.
+    str text = "AB";
+    auto first = decode_utf8(text, 0);
     ASSERT_TRUE(first.has_value());
-    EXPECT_EQ(*first, U'A');
-    EXPECT_EQ(pos, 1u);
-    auto second = decode_utf8(s, pos);
+    EXPECT_EQ(*first, (DecodedCodePoint{U'A', 1}));
+    auto second = decode_utf8(text, first->next);
     ASSERT_TRUE(second.has_value());
-    EXPECT_EQ(*second, U'B');
-    EXPECT_EQ(pos, 2u);
+    EXPECT_EQ(*second, (DecodedCodePoint{U'B', 2}));
+}
+
+TEST(DecodeUtf8, MidStringPosition) {
+    // Decoding from offset 1 of "A" + U+00E9 returns an absolute next position.
+    str text = "A\xC3\xA9";
+    auto d = decode_utf8(text, 1);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->code_point, U'é');
+    EXPECT_EQ(d->next, 3u);
+}
+
+TEST(DecodeUtf8, PosAtEnd) {
+    str text = "A";
+    EXPECT_FALSE(decode_utf8(text, 1).has_value());
+    EXPECT_FALSE(decode_utf8(text, 5).has_value());
+}
+
+TEST(DecodeUtf8, ConstPosition) {
+    // pos is taken by value: a const position is accepted and left unchanged.
+    str text = "\xC3\xA9";
+    const s::size_t pos = 0;
+    auto [code_point, next] = *decode_utf8(text, pos);
+    EXPECT_EQ(code_point, U'é');
+    EXPECT_EQ(next, 2u);
+    EXPECT_EQ(pos, 0u);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,5 +227,85 @@ TEST(DisplayWidth, MixedASCIIAndWide) {
 
 TEST(DisplayWidth, ControlChar) {
     // Null byte is non-printable → 0 cells.
-    EXPECT_EQ(display_width(std::string("\x00", 1)), 0u);
+    EXPECT_EQ(display_width(str("\x00", 1)), 0u);
+}
+
+TEST(DisplayWidth, SingleEmoji) {
+    // U+1F600 GRINNING FACE is East-Asian Wide → 2 cells.
+    EXPECT_EQ(display_width("\xF0\x9F\x98\x80"), 2u);
+}
+
+TEST(DisplayWidth, AsciiAndEmoji) {
+    // "A" (1) + U+1F600 (2) = 3 cells.
+    EXPECT_EQ(display_width("A\xF0\x9F\x98\x80"), 3u);
+}
+
+TEST(DisplayWidth, RecentEmoji) {
+    // U+1FAE0 MELTING FACE (Unicode 14) → 2 cells; checks the tables are current.
+    EXPECT_EQ(display_width("\xF0\x9F\xAB\xA0"), 2u);
+}
+
+TEST(DisplayWidth, TextSymbolNarrow) {
+    // U+2764 HEAVY BLACK HEART without VS16 uses text presentation → 1 cell.
+    EXPECT_EQ(display_width("\xE2\x9D\xA4"), 1u);
+}
+
+TEST(DisplayWidth, Vs16MakesEmojiWide) {
+    // U+2764 + U+FE0F VS16 requests emoji presentation → 2 cells.
+    EXPECT_EQ(display_width("\xE2\x9D\xA4\xEF\xB8\x8F"), 2u);
+}
+
+TEST(DisplayWidth, SkinToneModifier) {
+    // U+1F44D THUMBS UP + U+1F3FD skin tone → one 2-cell glyph.
+    EXPECT_EQ(display_width("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD"), 2u);
+}
+
+TEST(DisplayWidth, StandaloneSkinTone) {
+    // U+1F3FD skin tone on its own is drawn as a colour swatch → 2 cells.
+    EXPECT_EQ(display_width("\xF0\x9F\x8F\xBD"), 2u);
+}
+
+TEST(DisplayWidth, ZwjFamily) {
+    // U+1F468 ZWJ U+1F469 ZWJ U+1F467 (family) → one 2-cell glyph.
+    EXPECT_EQ(display_width("\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7"), 2u);
+}
+
+TEST(DisplayWidth, ZwjThenAscii) {
+    // Family emoji (2) + "x" (1) = 3 cells; the cluster ends at the ASCII char.
+    EXPECT_EQ(display_width("\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7""x"), 3u);
+}
+
+TEST(DisplayWidth, FlagPair) {
+    // U+1F1EF U+1F1F5 regional indicators J P → Japanese flag, 2 cells.
+    EXPECT_EQ(display_width("\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5"), 2u);
+}
+
+TEST(DisplayWidth, TwoFlags) {
+    // Japanese flag + U+1F1FA U+1F1F8 US flag → 4 cells.
+    EXPECT_EQ(display_width("\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8"), 4u);
+}
+
+TEST(DisplayWidth, LoneRegionalIndicator) {
+    // A single U+1F1EF without a partner → 1 cell.
+    EXPECT_EQ(display_width("\xF0\x9F\x87\xAF"), 1u);
+}
+
+TEST(DisplayWidth, Keycap) {
+    // "1" + U+FE0F VS16 + U+20E3 COMBINING ENCLOSING KEYCAP → 2 cells.
+    EXPECT_EQ(display_width("1\xEF\xB8\x8F\xE2\x83\xA3"), 2u);
+}
+
+TEST(DisplayWidth, TagSequenceFlag) {
+    // U+1F3F4 black flag + tag characters g b e n g + cancel tag (England) → 2 cells.
+    EXPECT_EQ(display_width("\xF0\x9F\x8F\xB4\xF3\xA0\x81\xA7\xF3\xA0\x81\xA2\xF3\xA0\x81\xA5\xF3\xA0\x81\xAE\xF3\xA0\x81\xA7\xF3\xA0\x81\xBF"), 2u);
+}
+
+TEST(DisplayWidth, CombiningAccent) {
+    // "e" + U+0301 COMBINING ACUTE ACCENT → 1 cell.
+    EXPECT_EQ(display_width("e\xCC\x81"), 1u);
+}
+
+TEST(DisplayWidth, FullwidthLatin) {
+    // U+FF21 FULLWIDTH LATIN CAPITAL LETTER A → 2 cells.
+    EXPECT_EQ(display_width("\xEF\xBC\xA1"), 2u);
 }

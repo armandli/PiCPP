@@ -7,18 +7,19 @@
 #include <string_view>
 
 #include <json/value.h>
+#include <util/aliases.h>
 
 namespace pi::json {
 
 // Error returned by parse() on malformed input.
 struct ParseError {
-    std::string message;
-    std::size_t offset = 0;  // byte offset into the input where the error was detected
+    str message;
+    s::size_t offset = 0;  // byte offset into the input where the error was detected
 };
 
 // Parse JSON text using simdjson DOM and convert the result into an owned Value.
 // Returns std::unexpected<ParseError> if the input is not well-formed JSON.
-std::expected<Value, ParseError> parse(std::string_view input);
+s::expected<Value, ParseError> parse(strv input);
 
 }  // namespace pi::json
 

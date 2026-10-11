@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <util/aliases.h>
+
 using namespace pi::util;
 
 // ---------------------------------------------------------------------------
@@ -93,10 +95,10 @@ TEST(CancelToken, OnCancelOnlyFirstOfTwoCallbacks) {
 
 TEST(CancelToken, StopTokenReflectsCancellation) {
     CancelToken tok;
-    std::stop_token st = tok.stop_token();
-    EXPECT_FALSE(st.stop_requested());
+    s::stop_token token = tok.stop_token();
+    EXPECT_FALSE(token.stop_requested());
     tok.cancel();
-    EXPECT_TRUE(st.stop_requested());
+    EXPECT_TRUE(token.stop_requested());
 }
 
 // ---------------------------------------------------------------------------
@@ -105,18 +107,18 @@ TEST(CancelToken, StopTokenReflectsCancellation) {
 
 TEST(CancelToken, CrossThreadCancel) {
     CancelToken tok;
-    std::atomic<bool> observed{false};
+    s::atomic<bool> observed{false};
 
-    std::jthread worker([&](std::stop_token) {
+    s::jthread worker([&](s::stop_token) {
         // Spin until cancellation is observed.
         while (not tok.is_cancelled()) {
-            std::this_thread::yield();
+            st::yield();
         }
         observed = true;
     });
 
     // Cancel from the main thread after a brief yield.
-    std::this_thread::yield();
+    st::yield();
     tok.cancel();
     worker.join();
 

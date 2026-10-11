@@ -1,55 +1,100 @@
 #include <util/strings.h>
 
+#include <sstream>
+
+#include <util/aliases.h>
+
 namespace pi::util {
 
-std::vector<std::string_view> split(std::string_view sv, char delim) {
-    // TODO(M1): scan sv, emit a view for each token between occurrences of delim.
-    (void)sv; (void)delim;
-    return {};
+vec<strv> split(strv sv, char delim) {
+  vec<strv> ret;
+  size_t sidx = 0;
+  size_t eidx = sv.find(delim, sidx);
+  while (eidx != sv.npos){
+    ret.emplace_back(sv.subview(sidx, eidx - sidx));
+
+    sidx = eidx + 1;
+    eidx = sv.find(delim, sidx);
+  }
+  ret.emplace_back(sv.subview(sidx));
+  return ret;
 }
 
-std::vector<std::string_view> split_lines(std::string_view sv) {
-    // TODO(M1): scan sv for \n and \r\n boundaries; strip the endings from each view.
-    // A trailing newline should NOT produce a trailing empty element.
-    (void)sv;
-    return {};
+vec<strv> split_lines(strv sv) {
+  vec<strv> ret;
+  size_t sidx = 0;
+  size_t eidx = sv.find_first_of("\r\n", sidx);
+  while (eidx != sv.npos){
+    if (sv[eidx] == '\r' and (eidx >= sv.size()-1 or sv[eidx+1] != '\n')){
+      eidx = sv.find_first_of("\r\n", eidx+1);
+      continue;
+    }
+
+    ret.emplace_back(sv.subview(sidx, eidx - sidx));
+
+    if (eidx < sv.size()-1 and sv[eidx] == '\r' and sv[eidx+1] == '\n')
+      sidx = eidx + 2;
+    else
+      sidx = eidx + 1;
+    eidx = sv.find_first_of("\r\n", sidx);
+  }
+  if (sv.subview(sidx).size() > 0)
+    ret.emplace_back(sv.subview(sidx));
+  return ret;
 }
 
-std::string join(const std::vector<std::string_view>& parts, std::string_view sep) {
-    // TODO(M1): concatenate parts with sep between consecutive elements.
-    (void)parts; (void)sep;
-    return {};
+str join(const vec<strv>& parts, strv sep) {
+  s::stringstream ss;
+  bool is_first = true;
+  for (const strv part : parts){
+    if (is_first) is_first = false;
+    else          ss << sep;
+    ss << part;
+  }
+  return ss.str();
 }
 
-std::string join(const std::vector<std::string>& parts, std::string_view sep) {
-    // TODO(M1): concatenate parts with sep between consecutive elements.
-    (void)parts; (void)sep;
-    return {};
+str join(const vec<str>& parts, strv sep) {
+  s::stringstream ss;
+  bool is_first = true;
+  for (const str& part : parts){
+    if (is_first) is_first = false;
+    else          ss << sep;
+    ss << part;
+  }
+  return ss.str();
 }
 
-std::string_view trim(std::string_view sv) {
-    // TODO(M1): strip leading and trailing ASCII whitespace (\t \n \r \f \v space).
-    (void)sv;
-    return {};
+strv trim(strv sv) {
+  size_t sidx = sv.find_first_not_of("\t\n\r\f\v ");
+  size_t eidx = sv.find_last_not_of("\t\n\r\f\v ");
+  if (sidx >= eidx) return strv{};
+  return sv.subview(sidx, eidx - sidx + 1);
 }
 
-bool starts_with(std::string_view sv, std::string_view prefix) {
-    // TODO(M1): return true iff sv begins with prefix.
-    (void)sv; (void)prefix;
-    return false;
+bool starts_with(strv sv, strv prefix) {
+  return sv.starts_with(prefix);
 }
 
-bool ends_with(std::string_view sv, std::string_view suffix) {
-    // TODO(M1): return true iff sv ends with suffix.
-    (void)sv; (void)suffix;
-    return false;
+bool ends_with(strv sv, strv suffix) {
+  return sv.ends_with(suffix);
 }
 
-std::string replace_all(std::string_view s, std::string_view from, std::string_view to) {
-    // TODO(M1): scan s for non-overlapping occurrences of from and replace each with to.
-    // Return s unchanged if from is empty or not found.
-    (void)from; (void)to;
-    return std::string(s);
+str replace_all(strv text, strv from, strv to) {
+  if (from.empty()) return str(text);
+
+  s::stringstream ss;
+  size_t sidx = 0;
+  size_t eidx = text.find(from);
+  while (eidx != text.npos){
+    ss << text.subview(sidx, eidx - sidx);
+    ss << to;
+
+    sidx = eidx + from.size();
+    eidx = text.find(from, sidx);
+  }
+  ss << text.subview(sidx, text.size() - sidx);
+  return ss.str();
 }
 
 }  // namespace pi::util

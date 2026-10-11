@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include <util/aliases.h>
+
 namespace pi::json {
 
 // Forward declaration so Object and Array can reference Value before it is defined.
@@ -17,26 +19,26 @@ struct Value;
 // Insertion-order-preserving JSON object.
 // Linear-scan find() is intentional: objects in Pi are small (tool args, messages).
 struct Object {
-    std::vector<std::pair<std::string, Value>> entries;
+    vec<s::pair<str, Value>> entries;
 
     // Find the value for key; returns nullptr if absent.
-    Value*       find(std::string_view key);
-    const Value* find(std::string_view key) const;
+    Value*       find(strv key);
+    const Value* find(strv key) const;
 
     // Access or insert (null default) by key.
-    Value& operator[](std::string_view key);
+    Value& operator[](strv key);
 
     // Insert or overwrite key with value.
-    void set(std::string_view key, Value value);
+    void set(strv key, Value value);
 
     bool   operator==(const Object&) const;
     // Defined below Value: libc++ needs Value complete to instantiate these.
-    std::size_t size()  const;
+    s::size_t size()  const;
     bool        empty() const;
 };
 
 // JSON array — a plain vector of Values.
-using Array = std::vector<Value>;
+using Array = vec<Value>;
 
 // Owned, mutable JSON value.  Corresponds to TypeScript Json / PiG orderedjson.Value.
 // Stores arrays and objects via heap pointers (raw owning) to break the recursive
@@ -46,14 +48,14 @@ struct Value {
 
     // --- Constructors ---
     Value();                              // null
-    Value(std::nullptr_t);
+    Value(s::nullptr_t);
     explicit Value(bool b);
     explicit Value(int64_t i);
     explicit Value(int i);
     explicit Value(double d);
-    explicit Value(std::string s);
-    explicit Value(std::string_view s);
-    explicit Value(const char* s);
+    explicit Value(str text);
+    explicit Value(strv text);
+    explicit Value(const char* text);
     explicit Value(Array a);
     explicit Value(Object o);
 
@@ -75,10 +77,10 @@ struct Value {
     bool is_object() const { return mKind == Kind::Object; }
 
     // --- Value extraction (nullopt / nullptr when wrong type) ---
-    std::optional<bool>             as_bool()   const;
-    std::optional<int64_t>          as_int()    const;
-    std::optional<double>           as_double() const;
-    std::optional<std::string_view> as_string() const;
+    opt<bool>             as_bool()   const;
+    opt<int64_t>          as_int()    const;
+    opt<double>           as_double() const;
+    opt<strv> as_string() const;
 
     Array*        as_array();
     const Array*  as_array()  const;
@@ -86,18 +88,18 @@ struct Value {
     const Object* as_object() const;
 
     // --- Object helpers (only valid when is_object()) ---
-    Value&       operator[](std::string_view key);
-    Value*       find(std::string_view key);
-    const Value* find(std::string_view key) const;
-    void         set(std::string_view key, Value val);
+    Value&       operator[](strv key);
+    Value*       find(strv key);
+    const Value* find(strv key) const;
+    void         set(strv key, Value val);
 
     // --- Array helpers (only valid when is_array()) ---
-    Value&       operator[](std::size_t index);
-    const Value& operator[](std::size_t index) const;
+    Value&       operator[](s::size_t index);
+    const Value& operator[](s::size_t index) const;
     void         push_back(Value val);
 
     // --- Common ---
-    std::size_t size()  const;  // entries for object, elements for array; 0 for scalars
+    s::size_t size()  const;  // entries for object, elements for array; 0 for scalars
     bool        empty() const;
 
     bool operator==(const Value&) const;
@@ -111,8 +113,8 @@ private:
         bool                   boolean;
         int64_t                integer;
         double                 real;
-        std::string*           string;   // owned
-        std::vector<Value>*    array;    // owned  (std::vector<Value> = Array)
+        str*           string;   // owned
+        vec<Value>*    array;    // owned  (std::vector<Value> = Array)
         Object*                object;   // owned
     } mData{};
 
@@ -120,7 +122,7 @@ private:
     void copy_from(const Value&);
 };
 
-inline std::size_t Object::size()  const { return entries.size(); }
+inline s::size_t Object::size()  const { return entries.size(); }
 inline bool        Object::empty() const { return entries.empty(); }
 
 // Convenience factories.
