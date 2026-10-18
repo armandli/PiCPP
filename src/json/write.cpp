@@ -42,9 +42,6 @@ str to_json(const Value& v) {
         (cp = util::decode_utf8(*v.as_string(), pos)) != s::nullopt;
         pos = (*cp).next){
       switch ((*cp).code_point){
-//      break; case '\"': case '\\': case '\b': case '\n': case '\r': case '\t':
-//        ss << '\\' << static_cast<char>((*cp).code_point);
-
       break; case '"':  ss << "\\\"";
       break; case '\\': ss << "\\\\";
       break; case '\b': ss << "\\b";
@@ -52,64 +49,34 @@ str to_json(const Value& v) {
       break; case '\n': ss << "\\n";
       break; case '\r': ss << "\\r";
       break; case '\t': ss << "\\t";
-      break; case 0x0:
-        ss << "\\u0000";
-      break; case 0x1:
-        ss << "\\u0001";
-      break; case 0x2:
-        ss << "\\u0002";
-      break; case 0x3:
-        ss << "\\u0003";
-      break; case 0x4:
-        ss << "\\u0004";
-      break; case 0x5:
-        ss << "\\u0005";
-      break; case 0x6:
-        ss << "\\u0006";
-      break; case 0x7:
-        ss << "\\u0007";
-      break; case 0xB:
-        ss << "\\u000B";
-//      break; case 0xC:
-//        ss << "\\u000C";
-      break; case 0xE:
-        ss << "\\u000E";
-      break; case 0xF:
-        ss << "\\u000F";
-      break; case 0x10:
-        ss << "\\u0010";
-      break; case 0x11:
-        ss << "\\u0011";
-      break; case 0x12:
-        ss << "\\u0012";
-      break; case 0x13:
-        ss << "\\u0013";
-      break; case 0x14:
-        ss << "\\u0014";
-      break; case 0x15:
-        ss << "\\u0015";
-      break; case 0x16:
-        ss << "\\u0016";
-      break; case 0x17:
-        ss << "\\u0017";
-      break; case 0x18:
-        ss << "\\u0018";
-      break; case 0x19:
-        ss << "\\u0019";
-      break; case 0x1A:
-        ss << "\\u001A";
-      break; case 0x1B:
-        ss << "\\u001B";
-      break; case 0x1C:
-        ss << "\\u001C";
-      break; case 0x1D:
-        ss << "\\u001D";
-      break; case 0x1E:
-        ss << "\\u001E";
-      break; case 0x1F:
-        ss << "\\u001F";
-      break; default:
-        ss << (*v.as_string()).substr(pos, (*cp).next - pos);
+      break; case 0x0:  ss << "\\u0000";
+      break; case 0x1:  ss << "\\u0001";
+      break; case 0x2:  ss << "\\u0002";
+      break; case 0x3:  ss << "\\u0003";
+      break; case 0x4:  ss << "\\u0004";
+      break; case 0x5:  ss << "\\u0005";
+      break; case 0x6:  ss << "\\u0006";
+      break; case 0x7:  ss << "\\u0007";
+      break; case 0xB:  ss << "\\u000B";
+      break; case 0xE:  ss << "\\u000E";
+      break; case 0xF:  ss << "\\u000F";
+      break; case 0x10: ss << "\\u0010";
+      break; case 0x11: ss << "\\u0011";
+      break; case 0x12: ss << "\\u0012";
+      break; case 0x13: ss << "\\u0013";
+      break; case 0x14: ss << "\\u0014";
+      break; case 0x15: ss << "\\u0015";
+      break; case 0x16: ss << "\\u0016";
+      break; case 0x17: ss << "\\u0017";
+      break; case 0x18: ss << "\\u0018";
+      break; case 0x19: ss << "\\u0019";
+      break; case 0x1A: ss << "\\u001A";
+      break; case 0x1B: ss << "\\u001B";
+      break; case 0x1C: ss << "\\u001C";
+      break; case 0x1D: ss << "\\u001D";
+      break; case 0x1E: ss << "\\u001E";
+      break; case 0x1F: ss << "\\u001F";
+      break; default: ss << (*v.as_string()).substr(pos, (*cp).next - pos);
       }
     }
     ss << '\"';

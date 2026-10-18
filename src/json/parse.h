@@ -14,7 +14,10 @@ namespace pi::json {
 // Error returned by parse() on malformed input.
 struct ParseError {
     str message;
-    s::size_t offset = 0;  // byte offset into the input where the error was detected
+    // 0-based byte index of the first byte at which the input stops being a prefix
+    // of any valid JSON document; input.size() if the input is truncated.
+    // 0 when the syntax is valid but simdjson still failed (e.g. nesting too deep).
+    s::size_t offset = 0;
 };
 
 // Parse JSON text using simdjson DOM and convert the result into an owned Value.

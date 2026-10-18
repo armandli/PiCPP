@@ -10,7 +10,7 @@ Each milestone:
 - ends with a **demo** you can run against local Ollama,
 - lists **what you'll notice is missing**, which is what the next milestone fixes.
 
-Check items off as you go. `M0` is done.
+Check items off as you go. `M0` and `M1` are done.
 
 ---
 
@@ -147,29 +147,39 @@ make help       # all targets
 
 ---
 
-## M1 — Foundations: util + JSON
+## M1 — Foundations: util + JSON ✅
 
 **Goal:** the value types everything else is built from. No agent yet; this is pure library work with lots of
 small tests.
 
 ### util
-- [ ] `util/strings`: `split`, `split_lines` (handle `\r\n`), `join`, `trim`, `starts_with`/`ends_with`,
+- [x] `util/strings`: `split`, `split_lines` (handle `\r\n`), `join`, `trim`, `starts_with`/`ends_with`,
       `replace_all`
-- [ ] `util/utf8`: decode/validate UTF-8, iterate code points, `display_width` (wide East-Asian = 2 cells;
+- [x] `util/utf8`: decode/validate UTF-8, iterate code points, `display_width` (wide East-Asian = 2 cells;
       FTXUI has `string_width` you may reuse in the TUI only)
-- [ ] `util/cancel`: `CancelToken` wrapping `std::stop_source`/`std::stop_token`; `cancel()`,
+- [x] `util/cancel`: `CancelToken` wrapping `std::stop_source`/`std::stop_token`; `cancel()`,
       `is_cancelled()`, `on_cancel(callback)` via `std::stop_callback`
 
 ### json
-- [ ] `json/value`: `Value` = null | bool | int64 | double | string | Array | Object.
+- [x] `json/value`: `Value` = null | bool | int64 | double | string | Array | Object.
       `Object` **preserves insertion order** (e.g. `std::vector<std::pair<std::string, Value>>` + lookup).
       Accessors: `is_*`, `as_*`, `operator[](key)`, `find(key)`, `push_back`, `set(key, v)`
-- [ ] `json/parse`: `std::expected<Value, ParseError> parse(std::string_view)` using **simdjson DOM**
+- [x] `json/parse`: `std::expected<Value, ParseError> parse(std::string_view)` using **simdjson DOM**
       (`simdjson::dom::parser`), converting recursively into `Value`
-- [ ] `json/write`: `std::string to_json(const Value&)`, compact output, correct escaping (`"`, `\\`, control chars,
+- [x] `json/write`: `std::string to_json(const Value&)`, compact output, correct escaping (`"`, `\\`, control chars,
       `\u00XX`), shortest round-trip doubles (`std::to_chars`)
-- [ ] Tests: round-trip (`parse(to_json(v)) == v`), key order preserved, escapes, unicode, big ints,
+- [x] Tests: round-trip (`parse(to_json(v)) == v`), key order preserved, escapes, unicode, big ints,
       malformed input → error with position
+
+Decisions made in M1 (documented in code comments under `src/json/` and in `test/json/json_test.cpp`):
+
+- Integers outside `int64` parse as the nearest `double` (precision loss accepted, like `JSON.parse`); beyond
+  `DBL_MAX` they become ±infinity. simdjson's `number_as_string(true)` avoids `BIGINT_ERROR`.
+- NaN / ±infinity are written as `null` (like `JSON.stringify`); integral doubles get `.0` so they read back as
+  doubles.
+- `ParseError::offset` is the byte index of the first byte that can't start valid JSON (`input.size()` if
+  truncated). simdjson doesn't report positions, so a validating scanner finds it on the error path only.
+- A moved-from `Value` is null.
 
 **Read:** `pig:internal/orderedjson`, `pig:docs/typescript-to-go-porting.md` ("insertion order is observable").
 

@@ -458,6 +458,259 @@ TEST(Parse, ParseErrorHasNonZeroOffset) {
 }
 
 // ===========================================================================
+// parse — error offsets
+//
+// ParseError::offset is the byte index of the first byte at which the input
+// stops being a prefix of any valid JSON document.  If the whole input is a
+// valid prefix but the document is incomplete (truncated), the offset is
+// input.size().  Offsets are 0-based byte indices, not code points or columns.
+// ===========================================================================
+
+static s::size_t error_offset(strv input) {
+    auto r = parse(input);
+    EXPECT_FALSE(r.has_value()) << "input unexpectedly parsed: " << input;
+    return r.has_value() ? s::size_t(-1) : r.error().offset;
+}
+
+TEST(ParseErrorOffset, UnexpectedTokenInObjectValue) {
+    // {"key": !!}
+    // 0123456789
+    EXPECT_EQ(error_offset(R"({"key": !!})"), 8u);
+}
+
+TEST(ParseErrorOffset, TrailingCommaInObject) {
+    // {"a": 1,}  -> the '}' after ',' is invalid
+    EXPECT_EQ(error_offset(R"({"a": 1,})"), 8u);
+}
+
+TEST(ParseErrorOffset, TrailingCommaInArray) {
+    // [1,2,]  -> the ']' after ',' is invalid
+    EXPECT_EQ(error_offset("[1,2,]"), 5u);
+}
+
+TEST(ParseErrorOffset, MissingCommaBetweenArrayElements) {
+    // [1 2]  -> '2' where ',' or ']' was expected
+    EXPECT_EQ(error_offset("[1 2]"), 3u);
+}
+
+TEST(ParseErrorOffset, NonStringObjectKey) {
+    // {1: 2}  -> '1' where a string key was expected
+    EXPECT_EQ(error_offset("{1: 2}"), 1u);
+}
+
+TEST(ParseErrorOffset, InvalidEscapeCharacter) {
+    // "\q"  -> 'q' is not a valid escape
+    EXPECT_EQ(error_offset(R"("\q")"), 2u);
+}
+
+TEST(ParseErrorOffset, InvalidLiteral) {
+    // trux  -> 'x' breaks the literal "true"
+    EXPECT_EQ(error_offset("trux"), 3u);
+}
+
+TEST(ParseErrorOffset, TrailingGarbageAfterValue) {
+    // [1] x  -> whitespace after the value is fine, 'x' is not
+    EXPECT_EQ(error_offset("[1] x"), 4u);
+}
+
+TEST(ParseErrorOffset, InvalidUtf8InString) {
+    // "\xFF"  -> 0xFF can never start a UTF-8 sequence
+    EXPECT_EQ(error_offset("\"\xFF\""), 1u);
+}
+
+TEST(ParseErrorOffset, ErrorOnLaterLineIsByteOffset) {
+    // Missing ',' before "b": offset counts '\n' bytes, it is not a column.
+    str input = "{\n  \"a\": 1\n  \"b\": 2\n}";
+    EXPECT_EQ(error_offset(input), input.find("\"b\""));
+    EXPECT_EQ(error_offset(input), 13u);
+}
+
+TEST(ParseErrorOffset, TruncatedObjectPointsAtEnd) {
+    EXPECT_EQ(error_offset("{"), 1u);
+}
+
+TEST(ParseErrorOffset, TruncatedArrayPointsAtEnd) {
+    EXPECT_EQ(error_offset("[1, 2"), 5u);
+}
+
+TEST(ParseErrorOffset, TruncatedLiteralPointsAtEnd) {
+    EXPECT_EQ(error_offset("tru"), 3u);
+}
+
+TEST(ParseErrorOffset, UnterminatedStringPointsAtEnd) {
+    EXPECT_EQ(error_offset(R"("abc)"), 4u);
+}
+
+TEST(ParseErrorOffset, WhitespaceOnlyPointsAtEnd) {
+    EXPECT_EQ(error_offset("   "), 3u);
+}
+
+TEST(ParseErrorOffset, EmptyInputIsOffsetZero) {
+    EXPECT_EQ(error_offset(""), 0u);
+}
+
+TEST(ParseErrorOffset, OffsetNeverExceedsInputSize) {
+    for (strv input : {"{", "[1,", R"({"a":})", "nul", "\"x", "[1]]", "{}{}"}) {
+        EXPECT_LE(error_offset(input), input.size()) << "input: " << input;
+    }
+}
+
+// ===========================================================================
+// parse — big integers
+//
+// Decision: integers in [INT64_MIN, INT64_MAX] parse as Kind::Int, exactly.
+// Integers outside that range parse as Kind::Double: the nearest double,
+// accepting the loss of precision (doubles are exact only up to 2^53).  This
+// matches JavaScript's JSON.parse, which Pi relies on.  They never wrap
+// around and never cause a parse error.  Integers beyond DBL_MAX (~1.8e308)
+// become infinity, just as JSON.parse returns Infinity.
+// ===========================================================================
+
+TEST(ParseBigInt, Int64MaxIsExactInt) {
+    auto r = parse("9223372036854775807");
+    ASSERT_TRUE(r.has_value());
+    ASSERT_TRUE(r->is_int());
+    EXPECT_EQ(*r->as_int(), s::numeric_limits<int64_t>::max());
+}
+
+TEST(ParseBigInt, Int64MinIsExactInt) {
+    auto r = parse("-9223372036854775808");
+    ASSERT_TRUE(r.has_value());
+    ASSERT_TRUE(r->is_int());
+    EXPECT_EQ(*r->as_int(), s::numeric_limits<int64_t>::min());
+}
+
+TEST(ParseBigInt, Int64MaxPlusOneDoesNotWrapNegative) {
+    // 2^63: one past INT64_MAX.  A static_cast<int64_t> wraps it to INT64_MIN.
+    auto r = parse("9223372036854775808");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(r->is_int() and *r->as_int() < 0)
+        << "2^63 wrapped to " << *r->as_int();
+    ASSERT_TRUE(r->is_double());
+    EXPECT_EQ(*r->as_double(), 9223372036854775808.0);
+}
+
+TEST(ParseBigInt, Uint64MaxDoesNotWrapToMinusOne) {
+    // 2^64 - 1.  A static_cast<int64_t> wraps it to -1.
+    auto r = parse("18446744073709551615");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(r->is_int() and *r->as_int() == -1)
+        << "UINT64_MAX wrapped to -1";
+    ASSERT_TRUE(r->is_double());
+    EXPECT_DOUBLE_EQ(*r->as_double(), 18446744073709551615.0);
+}
+
+TEST(ParseBigInt, BigIntInArrayKeepsSign) {
+    // Wrapping inside containers is just as wrong: element must stay positive.
+    auto r = parse("[1, 10000000000000000000]");
+    ASSERT_TRUE(r.has_value());
+    const Array* arr = r->as_array();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->size(), 2u);
+    ASSERT_TRUE((*arr)[1].is_double());
+    EXPECT_EQ(*(*arr)[1].as_double(), 1e19);
+}
+
+TEST(ParseBigInt, BeyondUint64ParsesAsDouble) {
+    // 2^64: too large for any 64-bit integer type.
+    auto r = parse("18446744073709551616");
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    ASSERT_TRUE(r->is_double());
+    EXPECT_EQ(*r->as_double(), 18446744073709551616.0);
+}
+
+TEST(ParseBigInt, BelowInt64MinParsesAsDouble) {
+    // -(2^63) - 1: one below INT64_MIN.
+    auto r = parse("-9223372036854775809");
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    ASSERT_TRUE(r->is_double());
+    EXPECT_EQ(*r->as_double(), -9223372036854775808.0);
+}
+
+TEST(RoundTrip, Int64Extremes) {
+    for (int64_t i : {s::numeric_limits<int64_t>::max(), s::numeric_limits<int64_t>::min()}) {
+        Value v(i);
+        auto r = parse(to_json(v));
+        ASSERT_TRUE(r.has_value()) << "i=" << i;
+        EXPECT_EQ(*r, v) << "i=" << i;
+    }
+}
+
+TEST(ParseBigInt, Int64MaxPlusOneLosesTheLowBits) {
+    // 2^63 + 1 is not representable as a double: it rounds to 2^63.
+    auto r = parse("9223372036854775809");
+    ASSERT_TRUE(r.has_value());
+    ASSERT_TRUE(r->is_double());
+    EXPECT_EQ(*r->as_double(), 9223372036854775808.0);
+}
+
+TEST(ParseBigInt, DistinctBigIntsMayCollapseToSameDouble) {
+    // Precision loss is accepted: 2^64 and 2^64 + 1 parse to the same value.
+    auto a = parse("18446744073709551616");
+    auto b = parse("18446744073709551617");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(*a, *b);
+}
+
+TEST(ParseBigInt, NegativeBeyond64BitsParsesAsDouble) {
+    auto r = parse("-18446744073709551616");
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    ASSERT_TRUE(r->is_double());
+    EXPECT_EQ(*r->as_double(), -18446744073709551616.0);
+}
+
+TEST(ParseBigInt, BigIntInObjectParsesAsDouble) {
+    auto r = parse(R"({"id": 123456789012345678901234567890, "n": 1})");
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    const Value* id = r->find("id");
+    ASSERT_NE(id, nullptr);
+    ASSERT_TRUE(id->is_double());
+    EXPECT_DOUBLE_EQ(*id->as_double(), 1.2345678901234568e29);
+    // Neighbouring ordinary integers are unaffected.
+    ASSERT_TRUE(r->find("n")->is_int());
+}
+
+TEST(ParseBigInt, IntegerBeyondDoubleRangeBecomesInfinity) {
+    // 400 digits > DBL_MAX: like JSON.parse, the result is +/-Infinity.
+    auto pos = parse(str(400, '9'));
+    ASSERT_TRUE(pos.has_value()) << pos.error().message;
+    ASSERT_TRUE(pos->is_double());
+    EXPECT_EQ(*pos->as_double(), s::numeric_limits<double>::infinity());
+
+    auto neg = parse("-" + str(400, '9'));
+    ASSERT_TRUE(neg.has_value()) << neg.error().message;
+    ASSERT_TRUE(neg->is_double());
+    EXPECT_EQ(*neg->as_double(), -s::numeric_limits<double>::infinity());
+}
+
+TEST(ParseBigInt, OrdinaryNumbersUnaffected) {
+    // Keeping big integers as strings in simdjson must not change other numbers.
+    auto r = parse("[0, -1, 1.5, 2e3, 9223372036854775807]");
+    ASSERT_TRUE(r.has_value());
+    const Array& a = *r->as_array();
+    EXPECT_TRUE(a[0].is_int());
+    EXPECT_TRUE(a[1].is_int());
+    EXPECT_TRUE(a[2].is_double());
+    EXPECT_TRUE(a[3].is_double());
+    EXPECT_TRUE(a[4].is_int());
+}
+
+TEST(RoundTrip, BigIntComesBackAsDouble) {
+    // Lossy by design: the original digits are not preserved.
+    auto r = parse("18446744073709551615");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(to_json(*r), "1.8446744073709552e+19");
+}
+
+TEST(RoundTrip, BigIntBeyondDoubleRangeWritesNull) {
+    // Infinity has no JSON form, so to_json writes null (see ToJson.*WritesNull).
+    auto r = parse(str(400, '9'));
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(to_json(*r), "null");
+}
+
+// ===========================================================================
 // to_json
 // ===========================================================================
 
