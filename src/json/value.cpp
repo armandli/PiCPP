@@ -22,51 +22,6 @@ const Value* Object::find(strv key) const {
   return nullptr;
 }
 
-// deep recursive find, not sure if this is needed
-//const Value* Object::find(strv key) const {
-//  struct Recursion {
-//    strv key;
-//    Recursion(strv key): key(key) {}
-//    const Value* find_obj(const Object& obj){
-//      for (const auto& [k, v] : obj.entries){
-//        if (key == k) return &v;
-//        switch (v.kind()){
-//        break; case Value::Kind::Array: {
-//          const Value* rv = find_array(v);
-//          if (rv != nullptr) return rv;
-//        }
-//        break; case Value::Kind::Object: {
-//          const Object* vobj = v.as_object();
-//          const Value* rv = find_obj(*vobj);
-//          if (rv != nullptr) return rv;
-//        }
-//        break; default:; // do nothing
-//        }
-//      }
-//      return nullptr;
-//    }
-//    const Value* find_array(const Value& array){
-//      const Array* a = array.as_array();
-//      for (const Value& v : *a){
-//        switch (v.kind()){
-//        break; case Value::Kind::Array: {
-//          const Value* rv = find_array(v);
-//          if (rv != nullptr) return rv;
-//        }
-//        break; case Value::Kind::Object: {
-//          const Object* obj = v.as_object();
-//          const Value* rv = find_obj(*obj);
-//          if (rv != nullptr) return rv;
-//        }
-//        break; default:; // do nothing
-//        }
-//      }
-//      return nullptr;
-//    }
-//  } recursion(key);
-//  return recursion.find_obj(*this);
-//}
-
 Value& Object::operator[](strv key) {
   for (auto& [k, v] : entries){
     if (key == k) return v;

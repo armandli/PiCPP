@@ -1,7 +1,7 @@
 pi_add_test(smoke  DEPS simdjson::simdjson ftxui::dom CURL::libcurl)
 pi_add_test(util   DEPS pi::util)
 pi_add_test(json   DEPS pi::json)
-pi_add_test(http   DEPS pi::http)
+pi_add_test(http   DEPS pi::http simdjson::simdjson)
 pi_add_test(ai     DEPS pi::ai)
 pi_add_test(agent  DEPS pi::agent)
 pi_add_test(tools  DEPS pi::tools)
