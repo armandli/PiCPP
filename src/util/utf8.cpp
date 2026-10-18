@@ -65,10 +65,7 @@ opt<DecodedCodePoint> decode_utf8(strv text, s::size_t pos) {
   break; case 0b11000000: case 0b11001000: case 0b11010000: case 0b11011000: {
     if (pos + 2 > text.size()) return s::nullopt;
     unsigned char c2 = text[pos+1] & 0b11000000;
-    switch (c2){
-    break; case 0b10000000:; // do nothing
-    break; default: return s::nullopt;
-    }
+    if (c2 != 0b10000000) return s::nullopt;
     c1 = text[pos];
     c2 = text[pos+1];
     char32_t val = ((c1 & 0b00011111) << 6) + (c2 & 0b00111111);
@@ -79,15 +76,12 @@ opt<DecodedCodePoint> decode_utf8(strv text, s::size_t pos) {
     if (pos + 3 > text.size()) return s::nullopt;
     unsigned char c2 = text[pos+1] & 0b11000000;
     unsigned char c3 = (text[pos+2] & 0b11000000) >> 2;
-    switch (c2 | c3){
-    break; case 0b10100000:; // do nothing
-    break; default: return s::nullopt;
-    }
+    if ((c2 | c3) != 0b10100000) return s::nullopt;
     c1 = text[pos];
     c2 = text[pos+1];
     c3 = text[pos+2];
     char32_t val = ((c1 & 0b00001111) << 12) + ((c2 & 0b00111111) << 6) + (c3 & 0b00111111);
-    if (val < 0x800) return s::nullopt;                  // overlong encoding
+    if (val < 0x800) return s::nullopt;                     // overlong encoding
     if (val >= 0xD800 and val <= 0xDFFF) return s::nullopt; // UTF-16 surrogate half
     return DecodedCodePoint{val, pos + 3};
   }
@@ -96,10 +90,7 @@ opt<DecodedCodePoint> decode_utf8(strv text, s::size_t pos) {
     unsigned char c2 = text[pos+1] & 0b11000000;
     unsigned char c3 = (text[pos+2] & 0b11000000) >> 2;
     unsigned char c4 = (text[pos+3] & 0b11000000) >> 4;
-    switch (c2 | c3 | c4){
-    break; case 0b10101000:; // do nothing
-    break; default: return s::nullopt;
-    }
+    if ((c2 | c3 | c4) != 0b10101000) return s::nullopt;
     c1 = text[pos];
     c2 = text[pos+1];
     c3 = text[pos+2];

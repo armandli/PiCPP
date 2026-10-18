@@ -17,6 +17,19 @@ endif
 
 GENERATOR := $(if $(shell command -v ninja 2>/dev/null),Ninja,Unix Makefiles)
 
+# CMake resolves clang's helper tools to the versioned Cellar path, which
+# disappears on `brew upgrade llvm`. Pin them to the stable opt/ symlink.
+HOMEBREW_LLVM_BIN := /opt/homebrew/opt/llvm/bin
+ifeq ($(CXX),$(HOMEBREW_CLANG))
+  LLVM_TOOL_FLAGS := \
+    -DCMAKE_CXX_COMPILER_CLANG_SCAN_DEPS=$(HOMEBREW_LLVM_BIN)/clang-scan-deps \
+    -DCMAKE_CXX_COMPILER_AR=$(HOMEBREW_LLVM_BIN)/llvm-ar \
+    -DCMAKE_CXX_COMPILER_RANLIB=$(HOMEBREW_LLVM_BIN)/llvm-ranlib \
+    -DCMAKE_C_COMPILER_CLANG_SCAN_DEPS=$(HOMEBREW_LLVM_BIN)/clang-scan-deps \
+    -DCMAKE_C_COMPILER_AR=$(HOMEBREW_LLVM_BIN)/llvm-ar \
+    -DCMAKE_C_COMPILER_RANLIB=$(HOMEBREW_LLVM_BIN)/llvm-ranlib
+endif
+
 CMAKE_FLAGS ?=
 
 .PHONY: all build configure test test-live test-all run release clean distclean help
@@ -28,6 +41,7 @@ $(BUILD_DIR)/CMakeCache.txt:
 	  -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 	  -DCMAKE_CXX_COMPILER=$(CXX) \
 	  -DCMAKE_C_COMPILER=$(CC) \
+	  $(LLVM_TOOL_FLAGS) \
 	  $(CMAKE_FLAGS)
 	@ln -sf $(BUILD_DIR)/compile_commands.json compile_commands.json
 

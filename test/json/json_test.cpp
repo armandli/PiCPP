@@ -3,6 +3,7 @@
 #include <json/write.h>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -489,6 +490,50 @@ TEST(ToJson, Double) {
     EXPECT_DOUBLE_EQ(*r->as_double(), 3.14);
 }
 
+TEST(ToJson, IntegralDoubleKeepsDecimalPoint) {
+    // Integral doubles get ".0" so they parse back as Double, not Int.
+    EXPECT_EQ(to_json(Value(0.0)), "0.0");
+    EXPECT_EQ(to_json(Value(1.0)), "1.0");
+    EXPECT_EQ(to_json(Value(-1.0)), "-1.0");
+    // Exponent form already parses as a double; no ".0" appended.
+    EXPECT_EQ(to_json(Value(1e100)), "1e+100");
+}
+
+// JSON (RFC 8259) has no literal for NaN or Infinity. to_json follows
+// JSON.stringify and writes null for them, so the output is always valid JSON.
+// The original double cannot be recovered: parsing the result yields Null.
+
+TEST(ToJson, NaNWritesNull) {
+    EXPECT_EQ(to_json(Value(s::numeric_limits<double>::quiet_NaN())), "null");
+}
+
+TEST(ToJson, PositiveInfinityWritesNull) {
+    EXPECT_EQ(to_json(Value(s::numeric_limits<double>::infinity())), "null");
+}
+
+TEST(ToJson, NegativeInfinityWritesNull) {
+    EXPECT_EQ(to_json(Value(-s::numeric_limits<double>::infinity())), "null");
+}
+
+TEST(ToJson, NonFiniteInContainersWritesNull) {
+    // Non-finite doubles nested in arrays / objects must also produce valid JSON.
+    Array arr;
+    arr.push_back(Value(s::numeric_limits<double>::quiet_NaN()));
+    arr.push_back(Value(s::numeric_limits<double>::infinity()));
+    EXPECT_EQ(to_json(Value(s::move(arr))), "[null,null]");
+
+    Value obj(Object{});
+    obj.set("x", Value(-s::numeric_limits<double>::infinity()));
+    EXPECT_EQ(to_json(obj), R"({"x":null})");
+}
+
+TEST(RoundTrip, NonFiniteParsesAsNull) {
+    // Lossy by design: a non-finite double comes back as Null.
+    auto r = parse(to_json(Value(s::numeric_limits<double>::quiet_NaN())));
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(r->is_null());
+}
+
 TEST(ToJson, SimpleString) {
     EXPECT_EQ(to_json(Value("hello")), R"("hello")");
 }
@@ -514,9 +559,9 @@ TEST(ToJson, StringEscapesCarriageReturn) {
 }
 
 TEST(ToJson, StringEscapesControlChar) {
-    // U+0001 must be written as .
+    // U+0001 must be written as \u0001.
     str text = to_json(Value(str{"\x01"}));
-    EXPECT_EQ(text, R"("")");
+    EXPECT_EQ(text, R"("\u0001")");
 }
 
 TEST(ToJson, StringPassesThroughUtf8) {

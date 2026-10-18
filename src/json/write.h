@@ -12,7 +12,10 @@ namespace pi::json {
 // String values are escaped per RFC 8259: \", \\, \/, \b, \f, \n, \r, \t,
 // and \uXXXX for control characters U+0000–U+001F.
 // Code points above U+007F are written as UTF-8 (not escaped).
-// Doubles use std::to_chars for shortest round-trip representation.
+// Doubles use std::to_chars for shortest round-trip representation; integral
+// doubles get a trailing ".0" (0.0 -> "0.0") so they parse back as doubles.
+// NaN, +Infinity and -Infinity have no JSON representation and are written as
+// null, matching JavaScript's JSON.stringify.
 str to_json(const Value& v);
 
 }  // namespace pi::json

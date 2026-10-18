@@ -11,151 +11,136 @@ namespace pi::json {
 // ---------------------------------------------------------------------------
 
 Value* Object::find(strv key) {
-    // TODO(M1): linear scan entries for key; return pointer to value or nullptr.
-    (void)key;
-    return nullptr;
+  return const_cast<Value*>(static_cast<const Object&>(*this).find(key));
 }
 
+// shallow search
 const Value* Object::find(strv key) const {
-    // TODO(M1): linear scan entries for key; return const pointer or nullptr.
-    (void)key;
-    return nullptr;
+  for (const auto& [k, v] : entries){
+    if (key == k) return &v;
+  }
+  return nullptr;
 }
+
+// deep recursive find, not sure if this is needed
+//const Value* Object::find(strv key) const {
+//  struct Recursion {
+//    strv key;
+//    Recursion(strv key): key(key) {}
+//    const Value* find_obj(const Object& obj){
+//      for (const auto& [k, v] : obj.entries){
+//        if (key == k) return &v;
+//        switch (v.kind()){
+//        break; case Value::Kind::Array: {
+//          const Value* rv = find_array(v);
+//          if (rv != nullptr) return rv;
+//        }
+//        break; case Value::Kind::Object: {
+//          const Object* vobj = v.as_object();
+//          const Value* rv = find_obj(*vobj);
+//          if (rv != nullptr) return rv;
+//        }
+//        break; default:; // do nothing
+//        }
+//      }
+//      return nullptr;
+//    }
+//    const Value* find_array(const Value& array){
+//      const Array* a = array.as_array();
+//      for (const Value& v : *a){
+//        switch (v.kind()){
+//        break; case Value::Kind::Array: {
+//          const Value* rv = find_array(v);
+//          if (rv != nullptr) return rv;
+//        }
+//        break; case Value::Kind::Object: {
+//          const Object* obj = v.as_object();
+//          const Value* rv = find_obj(*obj);
+//          if (rv != nullptr) return rv;
+//        }
+//        break; default:; // do nothing
+//        }
+//      }
+//      return nullptr;
+//    }
+//  } recursion(key);
+//  return recursion.find_obj(*this);
+//}
 
 Value& Object::operator[](strv key) {
-    // TODO(M1): find key; if absent, append {key, null} and return new value.
-    (void)key;
-    // Stub: crash loudly so the user knows this is not implemented.
-    assert(false && "Object::operator[] not implemented");
-    return entries.front().second;  // unreachable
+  for (auto& [k, v] : entries){
+    if (key == k) return v;
+  }
+  entries.emplace_back(str(key), Value());
+  return entries.back().second;
 }
 
 void Object::set(strv key, Value value) {
-    // TODO(M1): find key and overwrite; if absent, append a new entry.
-    (void)key; (void)value;
+  for (auto& [k, v] : entries)
+    if (key == k){
+      v = value;
+      return;
+    }
+  entries.emplace_back(str(key), value);
 }
 
 bool Object::operator==(const Object& other) const {
-    // TODO(M1): entries must be equal in the same order.
-    (void)other;
-    return false;
+  if (entries.size() != other.entries.size()) return false;
+  for (size_t i = 0; i < entries.size(); ++i){
+    const auto& [ka, va] = entries[i];
+    const auto& [kb, vb] = other.entries[i];
+    if (ka != kb or va != vb) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
-// Value — private helpers
+// Value — constructors
 // ---------------------------------------------------------------------------
-
-void Value::destroy() {
-    switch (mKind) {
-    case Kind::String: delete mData.string;  break;
-    case Kind::Array:  delete mData.array;   break;
-    case Kind::Object: delete mData.object;  break;
-    default: break;
-    }
-    mKind   = Kind::Null;
-    mData   = {};
-}
-
-void Value::copy_from(const Value& o) {
-    mKind = o.mKind;
-    switch (mKind) {
-    case Kind::Null:   mData = {};                                          break;
-    case Kind::Bool:   mData.boolean = o.mData.boolean;                    break;
-    case Kind::Int:    mData.integer = o.mData.integer;                    break;
-    case Kind::Double: mData.real    = o.mData.real;                       break;
-    case Kind::String: mData.string  = new str(*o.mData.string);   break;
-    case Kind::Array:  mData.array   = new Array(*o.mData.array);          break;
-    case Kind::Object: mData.object  = new Object(*o.mData.object);        break;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Value — constructors / destructor / copy / move
-// ---------------------------------------------------------------------------
+// Alternatives are selected explicitly with in_place_type so the variant's
+// converting constructor never picks an unintended one (e.g. const char* → bool).
 
 Value::Value()
-    : mKind(Kind::Null), mData{} {}
+    : mData(s::in_place_type<s::monostate>) {}
 
 Value::Value(s::nullptr_t)
-    : mKind(Kind::Null), mData{} {}
+    : mData(s::in_place_type<s::monostate>) {}
 
 Value::Value(bool b)
-    : mKind(Kind::Bool), mData{} {
-    mData.boolean = b;
-}
+    : mData(s::in_place_type<bool>, b) {}
 
 Value::Value(int64_t i)
-    : mKind(Kind::Int), mData{} {
-    mData.integer = i;
-}
+    : mData(s::in_place_type<int64_t>, i) {}
 
 Value::Value(int i)
-    : mKind(Kind::Int), mData{} {
-    mData.integer = static_cast<int64_t>(i);
-}
+    : mData(s::in_place_type<int64_t>, i) {}
 
 Value::Value(double d)
-    : mKind(Kind::Double), mData{} {
-    mData.real = d;
-}
+    : mData(s::in_place_type<double>, d) {}
 
 Value::Value(str text)
-    : mKind(Kind::String), mData{} {
-    mData.string = new str(s::move(text));
-}
+    : mData(s::in_place_type<str>, s::move(text)) {}
 
 Value::Value(strv text)
-    : mKind(Kind::String), mData{} {
-    mData.string = new str(text);
-}
+    : mData(s::in_place_type<str>, text) {}
 
 Value::Value(const char* text)
-    : mKind(Kind::String), mData{} {
-    mData.string = new str(text);
-}
+    : mData(s::in_place_type<str>, text) {}
 
 Value::Value(Array a)
-    : mKind(Kind::Array), mData{} {
-    mData.array = new Array(s::move(a));
-}
+    : mData(s::in_place_type<Array>, s::move(a)) {}
 
 Value::Value(Object o)
-    : mKind(Kind::Object), mData{} {
-    mData.object = new Object(s::move(o));
-}
-
-Value::Value(const Value& o)
-    : mKind(Kind::Null), mData{} {
-    copy_from(o);
-}
+    : mData(s::in_place_type<Object>, s::move(o)) {}
 
 Value::Value(Value&& o) noexcept
-    : mKind(o.mKind), mData(o.mData) {
-    o.mKind = Kind::Null;
-    o.mData = {};
-}
-
-Value& Value::operator=(const Value& o) {
-    if (this != &o) {
-        destroy();
-        copy_from(o);
-    }
-    return *this;
-}
+    : mData(s::exchange(o.mData, Data{})) {}
 
 Value& Value::operator=(Value&& o) noexcept {
-    if (this != &o) {
-        destroy();
-        mKind   = o.mKind;
-        mData   = o.mData;
-        o.mKind = Kind::Null;
-        o.mData = {};
-    }
-    return *this;
-}
-
-Value::~Value() {
-    destroy();
+  if (this != &o) {
+    mData = s::exchange(o.mData, Data{});
+  }
+  return *this;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,44 +148,41 @@ Value::~Value() {
 // ---------------------------------------------------------------------------
 
 opt<bool> Value::as_bool() const {
-    // TODO(M1): return mData.boolean iff mKind == Kind::Bool.
-    (void)this;
-    return s::nullopt;
+  if (kind() != Kind::Bool) return s::nullopt;
+  return s::get<bool>(mData);
 }
 
 opt<int64_t> Value::as_int() const {
-    // TODO(M1): return mData.integer iff mKind == Kind::Int.
-    return s::nullopt;
+  if (kind() != Kind::Int) return s::nullopt;
+  return s::get<int64_t>(mData);
 }
 
 opt<double> Value::as_double() const {
-    // TODO(M1): return mData.real iff mKind == Kind::Double.
-    return s::nullopt;
+  if (kind() != Kind::Double) return s::nullopt;
+  return s::get<double>(mData);
 }
 
 opt<strv> Value::as_string() const {
-    // TODO(M1): return *mData.string iff mKind == Kind::String.
-    return s::nullopt;
+  if (kind() != Kind::String) return s::nullopt;
+  return s::get<str>(mData);
 }
 
 Array* Value::as_array() {
-    // TODO(M1): return mData.array iff mKind == Kind::Array.
-    return nullptr;
+  return const_cast<Array*>(static_cast<const Value&>(*this).as_array());
 }
 
 const Array* Value::as_array() const {
-    // TODO(M1): return mData.array iff mKind == Kind::Array.
-    return nullptr;
+  if (kind() != Kind::Array) return nullptr;
+  return &s::get<Array>(mData);
 }
 
 Object* Value::as_object() {
-    // TODO(M1): return mData.object iff mKind == Kind::Object.
-    return nullptr;
+  return const_cast<Object*>(static_cast<const Value&>(*this).as_object());
 }
 
 const Object* Value::as_object() const {
-    // TODO(M1): return mData.object iff mKind == Kind::Object.
-    return nullptr;
+  if (kind() != Kind::Object) return nullptr;
+  return &s::get<Object>(mData);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,27 +190,23 @@ const Object* Value::as_object() const {
 // ---------------------------------------------------------------------------
 
 Value& Value::operator[](strv key) {
-    // TODO(M1): assert is_object(), delegate to mData.object->operator[](key).
-    (void)key;
-    assert(false && "Value::operator[](string_view) not implemented");
-    return *this;  // unreachable
+  assert(is_object());
+  return s::get<Object>(mData).operator[](key);
 }
 
 Value* Value::find(strv key) {
-    // TODO(M1): assert is_object(), delegate to mData.object->find(key).
-    (void)key;
-    return nullptr;
+  assert(is_object());
+  return s::get<Object>(mData).find(key);
 }
 
 const Value* Value::find(strv key) const {
-    // TODO(M1): assert is_object(), delegate to mData.object->find(key).
-    (void)key;
-    return nullptr;
+  assert(is_object());
+  return s::get<Object>(mData).find(key);
 }
 
 void Value::set(strv key, Value val) {
-    // TODO(M1): assert is_object(), delegate to mData.object->set(key, val).
-    (void)key; (void)val;
+  assert(is_object());
+  return s::get<Object>(mData).set(key, val);
 }
 
 // ---------------------------------------------------------------------------
@@ -236,22 +214,18 @@ void Value::set(strv key, Value val) {
 // ---------------------------------------------------------------------------
 
 Value& Value::operator[](s::size_t index) {
-    // TODO(M1): assert is_array(), return (*mData.array)[index].
-    (void)index;
-    assert(false && "Value::operator[](size_t) not implemented");
-    return *this;  // unreachable
+  assert(is_array());
+  return s::get<Array>(mData)[index];
 }
 
 const Value& Value::operator[](s::size_t index) const {
-    // TODO(M1): assert is_array(), return (*mData.array)[index].
-    (void)index;
-    assert(false && "Value::operator[](size_t) const not implemented");
-    return *this;  // unreachable
+  assert(is_array());
+  return s::get<Array>(mData)[index];
 }
 
 void Value::push_back(Value val) {
-    // TODO(M1): assert is_array(), mData.array->push_back(std::move(val)).
-    (void)val;
+  assert(is_array());
+  return s::get<Array>(mData).push_back(s::move(val));
 }
 
 // ---------------------------------------------------------------------------
@@ -259,20 +233,20 @@ void Value::push_back(Value val) {
 // ---------------------------------------------------------------------------
 
 s::size_t Value::size() const {
-    // TODO(M1): array → mData.array->size(); object → mData.object->size(); else 0.
+  switch (kind()){
+  break; case Kind::Null: case Kind::Bool: case Kind::Int: case Kind::Double:
+         case Kind::String:
     return 0;
+  break; case Kind::Array:
+    return s::get<Array>(mData).size();
+  break; case Kind::Object:
+    return s::get<Object>(mData).size();
+  break; default: assert(false);
+  }
 }
 
 bool Value::empty() const {
-    // TODO(M1): size() == 0.
-    return true;
-}
-
-bool Value::operator==(const Value& other) const {
-    // TODO(M1): compare mKind; if equal, compare the active union member.
-    // For Array / Object, this is recursive.
-    (void)other;
-    return false;
+  return size() == 0;
 }
 
 }  // namespace pi::json
