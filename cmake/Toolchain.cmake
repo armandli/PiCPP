@@ -18,3 +18,15 @@ if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
       " -L${_picpp_llvm_root}/lib/unwind -lunwind")
   endif()
 endif()
+
+# The resource dir is detected once and cached under its versioned Cellar path;
+# `brew upgrade llvm` deletes it and dependency scanning then fails with
+# "'stdarg.h' file not found". `make` reconfigures automatically; this catches
+# direct cmake users.
+if(CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR
+   AND NOT EXISTS "${CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR}")
+  message(FATAL_ERROR
+    "Cached clang resource dir ${CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR} no "
+    "longer exists (compiler upgraded?). Reconfigure with `make configure` "
+    "or `cmake --fresh -B ${CMAKE_BINARY_DIR}`.")
+endif()

@@ -32,17 +32,30 @@ endif
 
 CMAKE_FLAGS ?=
 
-.PHONY: all build configure test test-live test-all run release clean distclean help
+# CMake also bakes versioned paths it can't be told to avoid (clang's
+# -resource-dir, implicit include dirs) into the build tree at configure time.
+# Fingerprint the compiler by its resolved install path; when an upgrade
+# changes it, the stamp changes and the tree is reconfigured with --fresh.
+TOOLCHAIN_ID := $(shell $(CXX) -print-resource-dir 2>/dev/null || $(CXX) -print-libgcc-file-name 2>/dev/null)
+TOOLCHAIN_STAMP := $(BUILD_DIR)/toolchain.id
+
+.PHONY: all build configure test test-live test-all run release clean distclean help FORCE
 
 all: build
 
-$(BUILD_DIR)/CMakeCache.txt:
-	cmake -S . -B $(BUILD_DIR) -G "$(GENERATOR)" \
+# Rewritten only when the fingerprint differs, so its mtime marks the change.
+$(TOOLCHAIN_STAMP): FORCE
+	@mkdir -p $(BUILD_DIR)
+	@echo '$(TOOLCHAIN_ID)' | cmp -s - $@ || echo '$(TOOLCHAIN_ID)' > $@
+
+$(BUILD_DIR)/CMakeCache.txt: $(TOOLCHAIN_STAMP)
+	cmake --fresh -S . -B $(BUILD_DIR) -G "$(GENERATOR)" \
 	  -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 	  -DCMAKE_CXX_COMPILER=$(CXX) \
 	  -DCMAKE_C_COMPILER=$(CC) \
 	  $(LLVM_TOOL_FLAGS) \
 	  $(CMAKE_FLAGS)
+	@touch $@
 	@ln -sf $(BUILD_DIR)/compile_commands.json compile_commands.json
 
 configure:
