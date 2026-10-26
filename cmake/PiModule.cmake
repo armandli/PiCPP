@@ -48,6 +48,8 @@ function(_pi_make_test_exe target sources deps)
   add_executable(${target} ${sources})
   target_include_directories(${target} PRIVATE
     ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/test)
+  # Tests read fixtures (e.g. recorded SSE streams) relative to this.
+  target_compile_definitions(${target} PRIVATE PICPP_TEST_DIR="${PROJECT_SOURCE_DIR}/test")
   target_link_libraries(${target} PRIVATE ${deps} GTest::gtest_main GTest::gmock)
   pi_set_warnings(${target})
   pi_set_sanitizers(${target} PRIVATE)

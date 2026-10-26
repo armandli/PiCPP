@@ -85,7 +85,14 @@ int raw_chat(const CliOptions& options){
 } // namespace
 
 // M0 toolchain check: proves FTXUI, simdjson and libcurl all link.
-// Replaced by modes/cli_args + mode dispatch in M3/M4 (see TODO.md).
+//
+// TODO(M3): replace the body of main() (banner, the CLI11 setup and the M2
+// --raw-chat demo) with mode dispatch:
+//   auto args = pi::modes::parse_cli_args(argc, argv);
+//   if (not args) { print args.error().output to stdout (code 0) or stderr; return its code; }
+//   pi::util::CancelToken cancel;  // keep the SIGINT watcher below: Ctrl-C → cancel.cancel()
+//   return pi::modes::dispatch(*args, s::cout, s::cerr, cancel);
+// Then delete raw_chat(), CliOptions and the banner, and drop the includes they used.
 int main(int argc, char** argv) {
   namespace f = ftxui;
 
