@@ -3,8 +3,14 @@
 namespace pi::http {
 
 const HttpHeader* find_header(const HttpHeaders& headers, strv name) {
-  // TODO(M2): return the first header whose name equals `name` ignoring ASCII case.
-  (void)headers; (void)name;
+  str lname(name);
+  s::transform(s::begin(lname), s::end(lname), s::begin(lname), [](unsigned char c){ return s::tolower(c); });
+
+  for (const HttpHeader& h : headers){
+    str hn = h.name;
+    s::transform(s::begin(hn), s::end(hn), s::begin(hn), [](unsigned char c){ return s::tolower(c); });
+    if (hn == lname) return &h;
+  }
   return nullptr;
 }
 

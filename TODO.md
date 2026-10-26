@@ -10,7 +10,7 @@ Each milestone:
 - ends with a **demo** you can run against local Ollama,
 - lists **what you'll notice is missing**, which is what the next milestone fixes.
 
-Check items off as you go. `M0` and `M1` are done.
+Check items off as you go. `M0`, `M1` and `M2` are done.
 
 ---
 
@@ -190,21 +190,21 @@ arguments must be built, mutated, stored and re-serialized, so they need an owne
 
 ---
 
-## M2 — HTTP + SSE
+## M2 — HTTP + SSE ✅
 
 **Goal:** get raw bytes from Ollama while they stream, and be able to stop early.
 
-- [ ] `http/transport`: abstract `HttpTransport` — `post_stream(url, headers, body, on_chunk, cancel)` →
+- [x] `http/transport`: abstract `HttpTransport` — `post_stream(url, headers, body, on_chunk, cancel)` →
       `std::expected<HttpStatus, HttpError>`; plus `get(url)` for listing models
-- [ ] `http/curl_client`: libcurl implementation
+- [x] `http/curl_client`: libcurl implementation
   - `CURLOPT_WRITEFUNCTION` forwards each chunk to `on_chunk`
   - cancellation: `CURLOPT_XFERINFOFUNCTION` returns non-zero when `CancelToken` is cancelled
   - one `curl_global_init` per process (function-local static); non-2xx → read body as error text
-- [ ] `http/sse`: incremental SSE decoder. `feed(bytes)` emits `{event, data}` per blank-line-terminated block.
+- [x] `http/sse`: incremental SSE decoder. `feed(bytes)` emits `{event, data}` per blank-line-terminated block.
       Must handle a chunk boundary anywhere (mid-line, mid-`\r\n`, mid-UTF-8 sequence), multi-line `data:`,
       `:` comments
-- [ ] Tests: SSE decoder fed one byte at a time == fed all at once; fake transport records request
-- [ ] Live test `test/http/ollama_live_test.cpp`: POST a tiny chat completion, assert ≥1 SSE event
+- [x] Tests: SSE decoder fed one byte at a time == fed all at once; fake transport records request
+- [x] Live test `test/http/ollama_live_test.cpp`: POST a tiny chat completion, assert ≥1 SSE event
 
 **Read:** `pig:ai/sse.go`; the SSE spec section "Interpreting an event stream".
 

@@ -31,7 +31,7 @@ struct CurlClient : HttpTransport {
 
   s::expected<HttpStatus, HttpError> post_stream(
       strv url, const HttpHeaders& headers, strv body,
-      const ChunkCallback& on_chunk, const util::CancelToken& cancel) override;
+      ChunkCallback on_chunk, const util::CancelToken& cancel) override;
 
   s::expected<HttpResponse, HttpError> get(
       strv url, const HttpHeaders& headers, const util::CancelToken& cancel) override;

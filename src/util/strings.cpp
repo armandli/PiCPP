@@ -68,7 +68,7 @@ str join(const vec<str>& parts, strv sep) {
 strv trim(strv sv) {
   size_t sidx = sv.find_first_not_of("\t\n\r\f\v ");
   size_t eidx = sv.find_last_not_of("\t\n\r\f\v ");
-  if (sidx >= eidx) return strv{};
+  if (sidx == strv::npos) return strv{};
   return sv.subview(sidx, eidx - sidx + 1);
 }
 

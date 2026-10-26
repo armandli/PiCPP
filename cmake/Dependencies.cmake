@@ -22,7 +22,14 @@ FetchContent_Declare(simdjson
   GIT_SHALLOW TRUE
   SYSTEM)
 
-FetchContent_MakeAvailable(ftxui simdjson)
+# CLI11: command-line parsing for the pi executable (header-only).
+FetchContent_Declare(cli11
+  GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+  GIT_TAG v2.7.2
+  GIT_SHALLOW TRUE
+  SYSTEM)
+
+FetchContent_MakeAvailable(ftxui simdjson cli11)
 
 if(PICPP_BUILD_TESTS)
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)

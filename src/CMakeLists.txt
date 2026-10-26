@@ -11,7 +11,7 @@ pi_add_module(modes  DEPS pi::tui)
 
 add_executable(pi main.cpp)
 # pi::modes transitively brings in every module and third-party library.
-target_link_libraries(pi PRIVATE pi::modes)
+target_link_libraries(pi PRIVATE pi::modes CLI11::CLI11)
 target_compile_definitions(pi PRIVATE PICPP_VERSION="${PROJECT_VERSION}")
 pi_set_warnings(pi)
 pi_set_sanitizers(pi PRIVATE)

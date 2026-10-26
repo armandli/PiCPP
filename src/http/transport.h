@@ -3,13 +3,13 @@
 
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <util/aliases.h>
 #include <util/cancel.h>
+#include <util/function_ref.h>
 
 namespace pi::http {
 
@@ -59,8 +59,9 @@ struct HttpError {
 
 // Receives each piece of the response body as it arrives.  Pieces are split at
 // arbitrary byte positions (mid-line, mid-UTF-8 sequence), so consumers must
-// buffer.  Called on the thread that called post_stream().
-using ChunkCallback = s::function<void(strv chunk)>;
+// buffer.  Called on the thread that called post_stream(), and only during that
+// call.  Non-owning (see FunctionRef): pass it straight through, never store it.
+using ChunkCallback = util::FunctionRef<void(strv chunk)>;
 
 // Abstract HTTP client so providers can be tested with canned bytes
 // (FakeTransport) and run for real against libcurl (CurlClient).
@@ -75,7 +76,7 @@ struct HttpTransport {
   //   - cancelled: returns HttpError{Cancelled}, even if some chunks were delivered.
   virtual s::expected<HttpStatus, HttpError> post_stream(
       strv url, const HttpHeaders& headers, strv body,
-      const ChunkCallback& on_chunk, const util::CancelToken& cancel) = 0;
+      ChunkCallback on_chunk, const util::CancelToken& cancel) = 0;
 
   // GET `url` and return the whole body.  Same error rules as post_stream().
   virtual s::expected<HttpResponse, HttpError> get(

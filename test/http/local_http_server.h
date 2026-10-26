@@ -25,9 +25,16 @@
 
 namespace pi::test {
 
+// An informational (1xx) response sent ahead of the final one, e.g. 103 Early Hints.
+struct InterimResponse {
+  long status = 103;
+  vec<s::pair<str, str>> headers;
+};
+
 struct ServerResponse {
   long status = 200;
   vec<s::pair<str, str>> headers;
+  vec<InterimResponse> interim;  // sent in order before the final status line
   vec<str> chunks;              // written one by one, with `delay` before each
   sc::milliseconds delay{0};
   // After the last chunk, keep the connection open this long before closing
@@ -188,8 +195,14 @@ private:
       }
     }
 
+    str out;
+    for (const InterimResponse& ir : resp.interim){
+      out += "HTTP/1.1 " + s::to_string(ir.status) + " Interim\r\n";
+      for (const auto& [k, v] : ir.headers) out += k + ": " + v + "\r\n";
+      out += "\r\n";
+    }
     // No Content-Length: the body ends when the connection closes.
-    str out = "HTTP/1.1 " + s::to_string(resp.status) + " Status\r\nConnection: close\r\n";
+    out += "HTTP/1.1 " + s::to_string(resp.status) + " Status\r\nConnection: close\r\n";
     for (const auto& [k, v] : resp.headers) out += k + ": " + v + "\r\n";
     out += "\r\n";
     if (not send_all(fd, out)) return;

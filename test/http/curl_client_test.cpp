@@ -126,6 +126,25 @@ TEST(CurlClient, PostReturnsResponseHeaders) {
     EXPECT_EQ(id->value, "abc");
 }
 
+TEST(CurlClient, PostDropsHeadersOfInterimResponses) {
+    // curl hands every response's headers to the header callback, 1xx included;
+    // only the final response's headers may be returned.
+    LocalHttpServer server;
+    ServerResponse resp = ok({"x"});
+    resp.interim = {{103, {{"Link", "</style.css>; rel=preload"}}}};
+    resp.headers = {{"Content-Type", "text/event-stream"}};
+    server.enqueue(resp);
+    CurlClient client;
+    CancelToken cancel;
+    auto r = client.post_stream(server.url(), {}, "{}", [](strv) {}, cancel);
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    EXPECT_EQ(r->code, 200);
+    EXPECT_EQ(find_header(r->headers, "Link"), nullptr);
+    const HttpHeader* ct = find_header(r->headers, "Content-Type");
+    ASSERT_NE(ct, nullptr);
+    EXPECT_EQ(ct->value, "text/event-stream");
+}
+
 TEST(CurlClient, PostNon2xxIsStatusErrorWithBody) {
     LocalHttpServer server;
     server.enqueue(ok({R"({"error":"model 'nope' not found"})"}, 404));
@@ -260,6 +279,25 @@ TEST(CurlClient, GetReturnsBodyAndStatus) {
     EXPECT_EQ(reqs[0].method, "GET");
     EXPECT_EQ(reqs[0].target, "/v1/models");
     EXPECT_EQ(reqs[0].header("Authorization"), "Bearer k");
+}
+
+TEST(CurlClient, GetDropsHeadersOfInterimResponses) {
+    LocalHttpServer server;
+    ServerResponse resp = ok({"body"});
+    resp.interim = {{103, {{"Link", "</a.css>; rel=preload"}}},
+                    {103, {{"Link", "</b.css>; rel=preload"}}}};
+    resp.headers = {{"X-Request-Id", "abc"}};
+    server.enqueue(resp);
+    CurlClient client;
+    CancelToken cancel;
+    auto r = client.get(server.url(), {}, cancel);
+    ASSERT_TRUE(r.has_value()) << r.error().message;
+    EXPECT_EQ(r->status.code, 200);
+    EXPECT_EQ(r->body, "body");
+    EXPECT_EQ(find_header(r->status.headers, "Link"), nullptr);
+    const HttpHeader* id = find_header(r->status.headers, "X-Request-Id");
+    ASSERT_NE(id, nullptr);
+    EXPECT_EQ(id->value, "abc");
 }
 
 TEST(CurlClient, GetNon2xxIsStatusError) {

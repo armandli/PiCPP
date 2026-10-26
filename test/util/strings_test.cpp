@@ -198,6 +198,14 @@ TEST(Trim, NoWhitespace) {
     EXPECT_EQ(trim("hello"), "hello");
 }
 
+TEST(Trim, SingleCharacter) {
+    EXPECT_EQ(trim("x"), "x");
+}
+
+TEST(Trim, SingleCharacterWithWhitespace) {
+    EXPECT_EQ(trim(" 2\r\n"), "2");
+}
+
 // ---------------------------------------------------------------------------
 // starts_with / ends_with
 // ---------------------------------------------------------------------------

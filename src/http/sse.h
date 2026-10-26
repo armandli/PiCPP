@@ -44,13 +44,15 @@ struct SseEvent {
 struct SseDecoder {
   // Consume the next bytes; return the events completed by them, in order.
   vec<SseEvent> feed(strv bytes);
-
+protected:
+  s::optional<SseEvent> process_line();
 private:
-  // TODO(M2): add whatever state you need, e.g.
-  //   str  mLine;            // bytes of the current, unfinished line
-  //   bool mLastWasCR;       // previous chunk ended in '\r' (skip a leading '\n')
-  //   bool mStarted;         // BOM check done
-  //   str  mEventType, mData, mLastId;
+  str  mLine;              // bytes of current, unfinished line
+  bool mLastWasCR = false; // previous chunk ended in '\r'
+  bool mStarted = false;   // BOM check done
+  str  mEventType;
+  str  mData;
+  str  mLastId;
 };
 
 }  // namespace pi::http
