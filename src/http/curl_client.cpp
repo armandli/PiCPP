@@ -50,9 +50,9 @@ public:
 };
 
 struct TransferContext {
-  CURL* handle;
+  CURL*         handle;
   ChunkCallback on_chunk;
-  str   error_body;
+  str           error_body;
 };
 
 size_t header_callback(char* buffer, size_t sz, size_t nitems, void* userp){
