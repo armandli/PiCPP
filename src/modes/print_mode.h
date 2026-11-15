@@ -42,7 +42,8 @@ int run_print_mode(
     const PrintOptions& options,
     s::ostream& out,
     s::ostream& err,
-    util::CancelToken cancel);
+    util::CancelToken cancel
+);
 
 }  // namespace pi::modes
 

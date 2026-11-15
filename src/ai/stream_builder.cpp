@@ -1,57 +1,228 @@
 #include <ai/stream_builder.h>
 
+#include <util/strings.h>
+#include <json/parse.h>
+
+#include <cassert>
+
 namespace pi::ai {
+
+namespace {
+// Raw tool call arguments to a JSON object: blank text and null are {}, anything
+// else must parse to an object.  The error is the reason, without the tool's name.
+s::expected<json::Value, str> parse_tool_args(strv raw) {
+  if (util::trim(raw).empty()) return json::object_value();
+  s::expected<json::Value, json::ParseError> args = json::parse(raw);
+  if (not args.has_value()) return s::unexpected(args.error().message);
+  if (args->is_null()) return json::object_value();
+  if (not args->is_object()) return s::unexpected(str("arguments are not a JSON object"));
+  return s::move(*args);
+}
+} // namespace
 
 StreamBuilder::StreamBuilder(EventStream stream, AssistantMessage initial)
   : mStream(s::move(stream))
   , mMessage(s::move(initial)) {
-  // TODO(M3): if mMessage.timestamp == 0, set it to now_ms().
+  if (mMessage.timestamp == 0)
+    mMessage.timestamp = now_ms();
 }
 
 void StreamBuilder::start() {
-  // TODO(M3): push StartEvent once; later calls are no-ops.
+  if (not mStarted and not mFinished){
+    mStream.push(StartEvent());
+    mStarted = true;
+  }
 }
 
 void StreamBuilder::text_delta(strv delta) {
-  // TODO(M3): ignore empty; switch blocks if the open block isn't text (see
-  //   header); append to the TextContent at the back of mMessage.content; push
-  //   TextDeltaEvent{index, delta}.
-  (void)delta;
+  if (not mStarted or mFinished) return;
+  if (delta.empty()) return;
+
+  switch (mOpen){
+  break; case Open::None: {
+    mMessage.content.push_back(TextContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(TextStartEvent{idx});
+    mStream.push(TextDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::Text: {
+    s::get<TextContent>(mMessage.content.back()).text += delta;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(TextDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::Thinking: {
+    str prev_content = s::get<ThinkingContent>(mMessage.content.back()).thinking;
+    mMessage.content.push_back(TextContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ThinkingEndEvent{idx-1, prev_content});
+    mStream.push(TextStartEvent{idx});
+    mStream.push(TextDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::ToolCall: {
+    s::expected<json::Value, str> args = parse_tool_args(mToolArgs);
+    if (not args.has_value()){
+      fail(StopReason::error, "invalid tool call arguments for " + s::get<ToolCall>(mMessage.content.back()).name + ": " + args.error());
+      return;
+    }
+    s::get<ToolCall>(mMessage.content.back()).arguments = *args;
+    ToolCall prev_tc = s::get<ToolCall>(mMessage.content.back());
+    mMessage.content.push_back(TextContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ToolCallEndEvent{idx-1, prev_tc});
+    mStream.push(TextStartEvent{idx});
+    mStream.push(TextDeltaEvent{idx, (str)delta});
+  }
+  break; default: assert(false);
+  }
+  mOpen = Open::Text;
 }
 
 void StreamBuilder::thinking_delta(strv delta) {
-  // TODO(M3): as text_delta, with ThinkingContent / Thinking*Event.
-  (void)delta;
+  if (not mStarted or mFinished) return;
+  if (delta.empty()) return;
+
+  switch (mOpen){
+  break; case Open::None: {
+    mMessage.content.push_back(ThinkingContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ThinkingStartEvent{idx});
+    mStream.push(ThinkingDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::Text: {
+    str prev_content = s::get<TextContent>(mMessage.content.back()).text;
+    mMessage.content.push_back(ThinkingContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(TextEndEvent{idx-1, prev_content});
+    mStream.push(ThinkingStartEvent{idx});
+    mStream.push(ThinkingDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::Thinking: {
+    s::get<ThinkingContent>(mMessage.content.back()).thinking += delta;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ThinkingDeltaEvent{idx, (str)delta});
+  }
+  break; case Open::ToolCall: {
+    s::expected<json::Value, str> args = parse_tool_args(mToolArgs);
+    if (not args.has_value()){
+      fail(StopReason::error, "invalid tool call arguments for " + s::get<ToolCall>(mMessage.content.back()).name + ": " + args.error());
+      return;
+    }
+    s::get<ToolCall>(mMessage.content.back()).arguments = *args;
+    ToolCall prev_tc = s::get<ToolCall>(mMessage.content.back());
+    mMessage.content.push_back(ThinkingContent{(str)delta});
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ToolCallEndEvent{idx-1, prev_tc});
+    mStream.push(ThinkingStartEvent{idx});
+    mStream.push(ThinkingDeltaEvent{idx, (str)delta});
+  }
+  break; default: assert(false);
+  }
+  mOpen = Open::Thinking;
 }
 
 void StreamBuilder::toolcall_start(str id, str name) {
-  // TODO(M3): close the open block; push ToolCall{id, name, {}} to content;
-  //   push ToolCallStartEvent{index, id, name}; clear the raw-arguments buffer.
-  (void)id; (void)name;
+  if (not mStarted or mFinished) return;
+
+  switch (mOpen){
+  break; case Open::None:; // do nothing
+  break; case Open::Text: {
+    strv prev_content = s::get<TextContent>(mMessage.content.back()).text;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(TextEndEvent{idx, (str)prev_content});
+  }
+  break; case Open::Thinking: {
+    strv prev_content = s::get<ThinkingContent>(mMessage.content.back()).thinking;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ThinkingEndEvent{idx, (str)prev_content});
+  }
+  break; case Open::ToolCall: {
+    s::expected<json::Value, str> args = parse_tool_args(mToolArgs);
+    if (not args.has_value()){
+      fail(StopReason::error, "invalid tool call arguments for " + s::get<ToolCall>(mMessage.content.back()).name + ": " + args.error());
+      return;
+    }
+    s::get<ToolCall>(mMessage.content.back()).arguments = *args;
+    ToolCall prev_tc = s::get<ToolCall>(mMessage.content.back());
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ToolCallEndEvent{idx, prev_tc});
+  }
+  break; default: assert(false);
+  }
+  mMessage.content.push_back(ToolCall{id, name});
+  size_t idx = mMessage.content.size()-1;
+  mStream.push(ToolCallStartEvent{idx, id, name});
+  mToolArgs.clear();
+  mOpen = Open::ToolCall;
 }
 
 void StreamBuilder::toolcall_delta(strv json_fragment) {
-  // TODO(M3): only while a tool-call block is open: append to the raw buffer and
-  //   push ToolCallDeltaEvent{index, fragment}.
-  (void)json_fragment;
+  if (not mStarted or mFinished) return;
+  if (mOpen != Open::ToolCall) return;
+  if (json_fragment.empty()) return;
+
+  size_t idx = mMessage.content.size()-1;
+  mToolArgs += json_fragment;
+  mStream.push(ToolCallDeltaEvent{idx, (str)json_fragment});
 }
 
 void StreamBuilder::set_usage(const Usage& usage) {
-  // TODO(M3): overwrite mMessage.usage (providers report cumulative usage).
-  (void)usage;
+  if (mFinished) return;
+  mMessage.usage = usage;
 }
 
 void StreamBuilder::finish(StopReason reason) {
-  // TODO(M3): route error/aborted to fail(); close the open block (a tool-call
-  //   parse failure turns this into fail(error, ...)); set stop_reason; push
-  //   DoneEvent{reason, mMessage}; mark finished.
-  (void)reason;
+  if (mFinished) return;
+  if (reason == StopReason::error or reason == StopReason::aborted){
+    fail(reason, "stream finished with reason " + str(to_string(reason)));
+    return;
+  }
+
+  switch (mOpen){
+  break; case Open::None:; // do nothing
+  break; case Open::Text: {
+    strv prev_content = s::get<TextContent>(mMessage.content.back()).text;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(TextEndEvent{idx, (str)prev_content});
+  }
+  break; case Open::Thinking: {
+    strv prev_content = s::get<ThinkingContent>(mMessage.content.back()).thinking;
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ThinkingEndEvent{idx, (str)prev_content});
+  }
+  break; case Open::ToolCall: {
+    s::expected<json::Value, str> args = parse_tool_args(mToolArgs);
+    if (not args.has_value()){
+      fail(StopReason::error, "invalid tool call arguments for " + s::get<ToolCall>(mMessage.content.back()).name + ": " + args.error());
+      return;
+    }
+    s::get<ToolCall>(mMessage.content.back()).arguments = *args;
+    ToolCall prev_tc = s::get<ToolCall>(mMessage.content.back());
+    size_t idx = mMessage.content.size()-1;
+    mStream.push(ToolCallEndEvent{idx, prev_tc});
+  }
+  break; default: assert(false);
+  }
+  mFinished = true;
+  mMessage.stop_reason = reason;
+  mStream.push(DoneEvent{reason, mMessage});
 }
 
 void StreamBuilder::fail(StopReason reason, str message) {
-  // TODO(M3): no *_end for the open block; set stop_reason (error unless
-  //   aborted) and error_message; push ErrorEvent{reason, mMessage}; mark finished.
-  (void)reason; (void)message;
+  if (mFinished) return;
+
+  mFinished = true;
+
+  switch (reason){
+  break; case StopReason::stop:
+         case StopReason::length:
+         case StopReason::toolUse:
+         case StopReason::error:
+    mMessage.stop_reason = StopReason::error;
+  break; case StopReason::aborted:
+    mMessage.stop_reason = StopReason::aborted;
+  }
+  mMessage.error_message = message;
+  mStream.push(ErrorEvent{mMessage.stop_reason, mMessage});
 }
 
 const AssistantMessage& StreamBuilder::message() const {
@@ -59,8 +230,7 @@ const AssistantMessage& StreamBuilder::message() const {
 }
 
 bool StreamBuilder::finished() const {
-  // TODO(M3)
-  return false;
+  return mFinished;
 }
 
 }  // namespace pi::ai

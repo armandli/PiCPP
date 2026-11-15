@@ -26,12 +26,13 @@ namespace pi::ai {
 //  - toolcall_start always opens a new block; toolcall_delta appends arguments
 //    JSON text to the current tool-call block (ignored if none is open);
 //    closing a tool-call block parses the accumulated text with json::parse
-//    (empty text → {}; unparsable → finish/fail decides, see below) and pushes
-//    ToolCallEndEvent with the parsed ToolCall
+//    (blank text or null → {}) and pushes ToolCallEndEvent with the parsed ToolCall.
+//    Arguments that don't parse or aren't a JSON object become
+//    fail(error, "invalid tool call arguments for <name>: ...") as soon as the
+//    block closes, whichever call closed it
 //  - finish(reason) closes the open block, stamps stop_reason, pushes DoneEvent.
 //    Precondition: reason is stop, length or toolUse; error / aborted are routed
-//    to fail().  If a tool call's arguments don't parse, finish() becomes
-//    fail(error, "invalid tool call arguments for <name>: ...")
+//    to fail() with the message "stream finished with reason <reason>"
 //  - fail(reason, message) does NOT close the open block (no *_end); it stamps
 //    stop_reason and error_message and pushes ErrorEvent.  reason must be error
 //    or aborted (anything else is treated as error)
@@ -56,14 +57,17 @@ struct StreamBuilder {
   bool finished() const;
 
 private:
-  // TODO(M3): state.  Suggested:
-  //   EventStream      mStream;
-  //   AssistantMessage mMessage;
-  //   enum class Open : uint8_t { None, Text, Thinking, ToolCall } mOpen = Open::None;
-  //   str              mToolArgs;      // raw JSON of the open tool call
-  //   bool             mStarted = false, mFinished = false;
   EventStream      mStream;
   AssistantMessage mMessage;
+  enum class Open : uint8_t {
+    None,
+    Text,
+    Thinking,
+    ToolCall
+  }                mOpen = Open::None;
+  str              mToolArgs;      // raw JSON of the open tool call
+  bool             mStarted = false;
+  bool             mFinished = false;
 };
 
 }  // namespace pi::ai

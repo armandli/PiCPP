@@ -23,6 +23,7 @@ include(Dependencies)
 include(PiModule)
 
 add_subdirectory(src)
+add_subdirectory(demos)
 
 if(PICPP_BUILD_TESTS)
   enable_testing()

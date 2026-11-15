@@ -108,6 +108,12 @@ TEST(FauxProvider, ChunkingNeverSplitsUtf8) {
     EXPECT_EQ(deltas_of(run(p)), (vec<str>{"a", "\xC3\xA9", "b"}));
 }
 
+TEST(FauxProvider, ChunkingGetsPastInvalidUtf8) {
+    FauxProvider p(FauxOptions{.chunk_size = 1});
+    p.enqueue(FauxResponse::text("a\xFF" "b"));
+    EXPECT_EQ(deltas_of(run(p)), (vec<str>{"a", "\xFF", "b"}));
+}
+
 TEST(FauxProvider, ChunkSizeZeroMeansOneDeltaPerStep) {
     FauxProvider p;
     p.enqueue(FauxResponse::text("a long sentence"));

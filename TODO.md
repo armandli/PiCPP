@@ -10,7 +10,7 @@ Each milestone:
 - ends with a **demo** you can run against local Ollama,
 - lists **what you'll notice is missing**, which is what the next milestone fixes.
 
-Check items off as you go. `M0`, `M1` and `M2` are done.
+Check items off as you go. `M0` through `M3` are done.
 
 ---
 
@@ -216,48 +216,48 @@ You'll see the JSON chunk format the next milestone has to parse.
 
 ---
 
-## M3 — AI layer (text only) + print mode
+## M3 — AI layer (text only) + print mode ✅
 
 **Goal:** `pi -p "question"` streams a real answer from Ollama, built on the same abstractions as Pi.
 
 ### Types (`ai/types`) — read `pi:ai/src/types.ts` in full first
-- [ ] Content blocks: `TextContent`, `ThinkingContent`, `ImageContent`, `ToolCall{id, name, arguments: Value}`
-- [ ] Messages: `UserMessage`, `AssistantMessage{content, api, provider, model, usage, stop_reason,
+- [x] Content blocks: `TextContent`, `ThinkingContent`, `ImageContent`, `ToolCall{id, name, arguments: Value}`
+- [x] Messages: `UserMessage`, `AssistantMessage{content, api, provider, model, usage, stop_reason,
       error_message, timestamp}`, `ToolResultMessage{tool_call_id, tool_name, content, is_error}`;
       `Message = std::variant<...>`
-- [ ] `Usage{input, output, cache_read, cache_write, total_tokens, cost}`, `StopReason` enum
+- [x] `Usage{input, output, cache_read, cache_write, total_tokens, cost}`, `StopReason` enum
       (`stop, length, toolUse, error, aborted`)
-- [ ] `Model{id, name, api, provider, base_url, reasoning, context_window, max_tokens, compat}`
-- [ ] `Context{system_prompt, messages, tools}`
-- [ ] JSON (de)serialization for all of the above (needed for request building now and sessions in M10)
+- [x] `Model{id, name, api, provider, base_url, reasoning, context_window, max_tokens, compat}`
+- [x] `Context{system_prompt, messages, tools}`
+- [x] JSON (de)serialization for all of the above (needed for request building now and sessions in M10)
 
 ### Events + stream
-- [ ] `ai/events`: `AssistantMessageEvent` variant — `start`, `text_start/delta/end`,
+- [x] `ai/events`: `AssistantMessageEvent` variant — `start`, `text_start/delta/end`,
       `thinking_start/delta/end`, `toolcall_start/delta/end`, `done{reason, message}`, `error{reason, message}`;
       each carries `content_index`
-- [ ] `ai/event_stream`: thread-safe queue. Producer `push()`es, consumer blocks on `next()`.
+- [x] `ai/event_stream`: thread-safe queue. Producer `push()`es, consumer blocks on `next()`.
       **Exactly one** terminal event (`done` or `error`). `result()` returns the final `AssistantMessage`.
       After the stream is handed out, errors are never thrown; they become the `error` event
-- [ ] Tests: ordering, terminal-event enforcement, producer on another thread, consumer cancellation
+- [x] Tests: ordering, terminal-event enforcement, producer on another thread, consumer cancellation
 
 ### Providers
-- [ ] `ai/provider`: `struct Provider { virtual EventStream stream(const Model&, const Context&,
+- [x] `ai/provider`: `struct Provider { virtual EventStream stream(const Model&, const Context&,
       const StreamOptions&, CancelToken) = 0; virtual std::vector<Model> models() = 0; }`
-- [ ] `ai/providers/faux`: scripted responses (list of steps per call), chunked deltas
-- [ ] `ai/providers/openai_completions` (text + thinking only for now):
+- [x] `ai/providers/faux`: scripted responses (list of steps per call), chunked deltas
+- [x] `ai/providers/openai_completions` (text + thinking only for now):
   - request: `model`, `messages` (system as `system` role for Ollama), `stream: true`,
     `stream_options: {include_usage: true}`, `max_tokens`
   - parse chunks: `choices[0].delta.content` → text events, `delta.reasoning` / `reasoning_content` → thinking
     events, `finish_reason` → stop reason (`stop`→stop, `length`→length, `tool_calls`→toolUse, other→error),
     `usage` → `Usage`
   - HTTP error / cancel → `error` event with `StopReason::error` / `aborted`
-- [ ] Tests: canned SSE (record one from M2's demo into `test/ai/fixtures/`) → expected event sequence;
+- [x] Tests: canned SSE (record one from M2's demo into `test/ai/fixtures/`) → expected event sequence;
       request-body assertions; abort mid-stream → `aborted`
 
 ### Print mode
-- [ ] `modes/cli_args`: `-p/--print <prompt>`, `--model <provider>/<id>`, `--version`, `--help`
-- [ ] `modes/print_mode`: build `Context`, stream, print text deltas as they arrive, print usage at the end
-- [ ] Replace the M0 banner in `main.cpp` with mode dispatch
+- [x] `modes/cli_args`: `-p/--print <prompt>`, `--model <provider>/<id>`, `--version`, `--help`
+- [x] `modes/print_mode`: build `Context`, stream, print text deltas as they arrive, print usage at the end
+- [x] Replace the M0 banner in `main.cpp` with mode dispatch
 
 **Read:** `pi:ai/src/api/openai-completions.ts` (`buildParams`, `convertMessages`, the stream loop, `mapStopReason`),
 `pi:ai/src/utils/event-stream.ts`, `pig:ai/event_stream.go`, `pig:ai/stream_builder.go`, `pig:ai/openai.go`.

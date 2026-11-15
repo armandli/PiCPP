@@ -80,7 +80,8 @@ struct ChunkDecoder {
 
 private:
   StreamBuilder& mBuilder;
-  // TODO(M3): state, e.g.  opt<str> mFinishReason;
+  opt<str>       mFinishReason;
+  bool           mStarted;
 };
 
 struct OpenAiCompletionsOptions {

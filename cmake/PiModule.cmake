@@ -70,6 +70,7 @@ function(pi_add_test name)
     _pi_make_test_exe(pi_${name}_tests "${unit_sources}" "${ARG_DEPS}")
     gtest_discover_tests(pi_${name}_tests
       TEST_PREFIX "${name}."
+      PROPERTIES TIMEOUT 30
       DISCOVERY_MODE PRE_TEST)
   endif()
 

@@ -192,6 +192,95 @@ TEST(StreamBuilder, InvalidToolArgumentsTurnFinishIntoError) {
     EXPECT_NE(e.message.error_message.find("read"), str::npos) << e.message.error_message;
 }
 
+TEST(StreamBuilder, NonObjectToolArgumentsAreAnError) {
+    for (strv arguments : {R"([1,2])", R"("text")", "3"}) {
+        Fixture f;
+        f.builder.start();
+        f.builder.toolcall_start("c", "read");
+        f.builder.toolcall_delta(arguments);
+        f.builder.finish(StopReason::toolUse);
+        vec<AssistantMessageEvent> ev = f.events();
+        ASSERT_FALSE(ev.empty());
+        ASSERT_TRUE(s::holds_alternative<ErrorEvent>(ev.back())) << arguments;
+        const ErrorEvent& e = s::get<ErrorEvent>(ev.back());
+        EXPECT_EQ(e.reason, StopReason::error) << arguments;
+        EXPECT_NE(e.message.error_message.find("invalid tool call arguments for read"), str::npos)
+            << e.message.error_message;
+    }
+}
+
+TEST(StreamBuilder, InvalidToolArgumentsFailWhenALaterBlockClosesThem) {
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("a", "rm");
+    f.builder.toolcall_delta(R"({"path":)");
+    f.builder.toolcall_start("b", "ls");
+    f.builder.finish(StopReason::toolUse);
+    EXPECT_EQ(kinds(f.events()), (vec<str>{"start", "toolcall_start", "toolcall_delta", "error"}));
+    EXPECT_EQ(f.builder.message().stop_reason, StopReason::error);
+    EXPECT_EQ(f.builder.message().content.size(), 1u);
+}
+
+TEST(StreamBuilder, BlankToolArgumentsAreEmptyObject) {
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("c", "ls");
+    f.builder.toolcall_delta(" \n");
+    f.builder.finish(StopReason::toolUse);
+    vec<AssistantMessageEvent> ev = f.events();
+    ASSERT_FALSE(ev.empty());
+    EXPECT_EQ(kind_name(ev.back()), "done");
+    EXPECT_EQ(f.builder.message().content, (vec<AssistantContent>{ToolCall{"c", "ls", j::object_value()}}));
+}
+
+TEST(StreamBuilder, NullToolArgumentsAreEmptyObject) {
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("c", "ls");
+    f.builder.toolcall_delta("null");
+    f.builder.finish(StopReason::toolUse);
+    vec<AssistantMessageEvent> ev = f.events();
+    ASSERT_FALSE(ev.empty());
+    EXPECT_EQ(kind_name(ev.back()), "done");
+    EXPECT_EQ(f.builder.message().content, (vec<AssistantContent>{ToolCall{"c", "ls", j::object_value()}}));
+}
+
+TEST(StreamBuilder, EmptyToolCallFragmentsAreIgnored) {
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("c", "ls");
+    f.builder.toolcall_delta("");
+    f.builder.toolcall_delta("{}");
+    f.builder.finish(StopReason::toolUse);
+    EXPECT_EQ(kinds(f.events()), (vec<str>{"start", "toolcall_start", "toolcall_delta", "toolcall_end", "done"}));
+}
+
+TEST(StreamBuilder, WhitespaceToolCallFragmentsAreKept) {
+    // A space can arrive as its own fragment in the middle of a JSON string.
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("c", "write");
+    f.builder.toolcall_delta(R"({"text":"hello)");
+    f.builder.toolcall_delta(" ");
+    f.builder.toolcall_delta(R"(world"})");
+    f.builder.finish(StopReason::toolUse);
+    EXPECT_EQ(kinds(f.events()), (vec<str>{"start", "toolcall_start", "toolcall_delta", "toolcall_delta", "toolcall_delta",
+                                           "toolcall_end", "done"}));
+    ToolCall expected{"c", "write", *j::parse(R"({"text":"hello world"})")};
+    EXPECT_EQ(f.builder.message().content, (vec<AssistantContent>{expected}));
+}
+
+TEST(StreamBuilder, ToolCallArgumentsSurviveALaterTextBlock) {
+    Fixture f;
+    f.builder.start();
+    f.builder.toolcall_start("c", "read");
+    f.builder.toolcall_delta(R"({"path":"a.txt"})");
+    f.builder.text_delta("t");
+    f.builder.finish(StopReason::stop);
+    ToolCall expected{"c", "read", *j::parse(R"({"path":"a.txt"})")};
+    EXPECT_EQ(f.builder.message().content, (vec<AssistantContent>{expected, TextContent{"t"}}));
+}
+
 // ===========================================================================
 // Terminal handling
 // ===========================================================================
@@ -234,6 +323,25 @@ TEST(StreamBuilder, FinishWithErrorReasonRoutesToFail) {
     vec<AssistantMessageEvent> ev = f.events();
     ASSERT_FALSE(ev.empty());
     EXPECT_EQ(kind_name(ev.back()), "error");
+    EXPECT_EQ(f.builder.message().error_message, "stream finished with reason error");
+}
+
+TEST(StreamBuilder, FinishWithAbortedReasonHasDefaultMessage) {
+    Fixture f;
+    f.builder.start();
+    f.builder.finish(StopReason::aborted);
+    AssistantMessage m = f.stream.result();
+    EXPECT_EQ(m.stop_reason, StopReason::aborted);
+    EXPECT_EQ(m.error_message, "stream finished with reason aborted");
+}
+
+TEST(StreamBuilder, UsageAfterTerminalIsIgnored) {
+    Fixture f;
+    f.builder.start();
+    f.builder.finish(StopReason::stop);
+    Usage late{.input = 99, .output = 0, .cache_read = 0, .cache_write = 0, .total_tokens = 99, .cost = {}};
+    f.builder.set_usage(late);
+    EXPECT_EQ(f.builder.message().usage, Usage{});
 }
 
 TEST(StreamBuilder, EverythingAfterTerminalIsANoop) {
