@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cmath>
 
+#include <util/language.h>
+
 namespace pi::ai {
 
 int64_t now_ms() {
@@ -83,10 +85,8 @@ json::Value encode(const Usage& usage) {
   return usage_val;
 }
 
-template <typename... Ts> struct overloaded : Ts... { using Ts::operator()...; };
-
 json::Value encode(const UserContent& content) {
-  return s::visit(overloaded {
+  return s::visit(util::Overloaded {
     [](const TextContent& c) -> json::Value {
       json::Object cobj;
       cobj.set("type", json::Value("text"));
@@ -104,7 +104,7 @@ json::Value encode(const UserContent& content) {
 }
 
 json::Value encode(const AssistantContent& content) {
-  return s::visit(overloaded {
+  return s::visit(util::Overloaded {
     [](const TextContent& c) -> json::Value {
       json::Object cobj;
       cobj.set("type", json::Value("text"));
@@ -129,7 +129,7 @@ json::Value encode(const AssistantContent& content) {
 }
 
 json::Value encode(const Message& message) {
-  return s::visit(overloaded {
+  return s::visit(util::Overloaded {
     [](const UserMessage& m) -> json::Value {
       json::Object mobj;
       mobj.set("role", json::Value("user"));

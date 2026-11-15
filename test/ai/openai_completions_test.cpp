@@ -25,9 +25,9 @@ namespace {
 // Recorded from Ollama 0.40.11 / qwen3.8:27b-mlx: reasoning first (each chunk
 // also carries "content":""), then content, finish_reason "stop", then a usage
 // chunk with empty choices, then [DONE].
-constexpr strv kFixture = "ai/fixtures/ollama_thinking_text.sse";
-constexpr strv kFixtureThinking = "The user asks a simple math question. 2+2=4. They want a short sentence answer.";
-constexpr strv kFixtureText = "2 + 2 equals 4.";
+constexpr strv FIXTURE = "ai/fixtures/ollama_thinking_text.sse";
+constexpr strv FIXTURE_THINKING = "The user asks a simple math question. 2+2=4. They want a short sentence answer.";
+constexpr strv FIXTURE_TEXT = "2 + 2 equals 4.";
 
 j::Value parse_or_die(strv text) {
     auto v = j::parse(text);
@@ -105,7 +105,7 @@ TEST(MakeOllamaModel, Fields) {
     EXPECT_EQ(m.id, "qwen3.8:27b-mlx");
     EXPECT_EQ(m.name, "qwen3.8:27b-mlx");
     EXPECT_EQ(m.api, "openai-completions");
-    EXPECT_EQ(m.api, kOpenAiCompletionsApi);
+    EXPECT_EQ(m.api, OPENAI_COMPLETIONS_API);
     EXPECT_EQ(m.provider, "ollama");
     EXPECT_EQ(m.base_url, "http://localhost:11434/v1");
     EXPECT_TRUE(m.reasoning);
@@ -397,19 +397,19 @@ TEST(ChunkDecoder, PayloadsAfterTerminalAreIgnored) {
 // ===========================================================================
 
 TEST(OpenAiCompletions, RecordedStreamDecodes) {
-    str bytes = read_fixture(kFixture);
-    ASSERT_FALSE(bytes.empty()) << "missing fixture " << kFixture;
+    str bytes = read_fixture(FIXTURE);
+    ASSERT_FALSE(bytes.empty()) << "missing fixture " << FIXTURE;
     Harness t;
     t.transport->enqueue(h::FakeResponse::from_body(bytes));
     vec<AssistantMessageEvent> ev = t.run();
 
     EXPECT_EQ(collapsed_kinds(ev), (vec<str>{"start", "thinking_start", "thinking_delta", "thinking_end",
                                              "text_start", "text_delta", "text_end", "done"}));
-    EXPECT_EQ(joined_thinking_deltas(ev), kFixtureThinking);
-    EXPECT_EQ(joined_text_deltas(ev), kFixtureText);
+    EXPECT_EQ(joined_thinking_deltas(ev), FIXTURE_THINKING);
+    EXPECT_EQ(joined_text_deltas(ev), FIXTURE_TEXT);
 
     AssistantMessage m = terminal_message(ev);
-    EXPECT_EQ(m.content, (vec<AssistantContent>{ThinkingContent{str(kFixtureThinking)}, TextContent{str(kFixtureText)}}));
+    EXPECT_EQ(m.content, (vec<AssistantContent>{ThinkingContent{str(FIXTURE_THINKING)}, TextContent{str(FIXTURE_TEXT)}}));
     EXPECT_EQ(m.stop_reason, StopReason::stop);
     EXPECT_EQ(m.usage.input, 28);
     EXPECT_EQ(m.usage.output, 33);
@@ -421,7 +421,7 @@ TEST(OpenAiCompletions, RecordedStreamDecodes) {
 
 TEST(OpenAiCompletions, BlockIndicesFollowContent) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     vec<AssistantMessageEvent> ev = t.run();
     ASSERT_FALSE(ev.empty());
     for (const AssistantMessageEvent& e : ev) {
@@ -431,7 +431,7 @@ TEST(OpenAiCompletions, BlockIndicesFollowContent) {
 }
 
 TEST(OpenAiCompletions, ByteByByteGivesTheSameEvents) {
-    str bytes = read_fixture(kFixture);
+    str bytes = read_fixture(FIXTURE);
     Harness whole;
     whole.transport->enqueue(h::FakeResponse::from_body(bytes));
     Harness bytewise;
@@ -446,7 +446,7 @@ TEST(OpenAiCompletions, ByteByByteGivesTheSameEvents) {
 }
 
 TEST(OpenAiCompletions, RandomSplitsGiveTheSameEvents) {
-    str bytes = read_fixture(kFixture);
+    str bytes = read_fixture(FIXTURE);
     Harness whole;
     whole.transport->enqueue(h::FakeResponse::from_body(bytes));
     vec<AssistantMessageEvent> expected = whole.run();
@@ -466,7 +466,7 @@ TEST(OpenAiCompletions, RandomSplitsGiveTheSameEvents) {
 
 TEST(OpenAiCompletions, PostsToChatCompletions) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     t.run(ask("What is 2+2?", "Answer in one short sentence."));
     ASSERT_EQ(t.transport->requests().size(), 1u);
     const h::RecordedRequest& r = t.transport->requests()[0];
@@ -476,7 +476,7 @@ TEST(OpenAiCompletions, PostsToChatCompletions) {
 
 TEST(OpenAiCompletions, BodyIsBuildRequest) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     StreamOptions o;
     o.max_tokens = 400;
     Context c = ask("What is 2+2?", "Answer in one short sentence.");
@@ -489,7 +489,7 @@ TEST(OpenAiCompletions, BodyIsBuildRequest) {
 
 TEST(OpenAiCompletions, Headers) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     t.run();
     ASSERT_EQ(t.transport->requests().size(), 1u);
     const h::HttpHeaders& hs = t.transport->requests()[0].headers;
@@ -502,7 +502,7 @@ TEST(OpenAiCompletions, Headers) {
 
 TEST(OpenAiCompletions, ApiKeyBecomesBearerToken) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     StreamOptions o;
     o.api_key = "sk-test";
     t.run(ask("q"), o);
@@ -514,7 +514,7 @@ TEST(OpenAiCompletions, ApiKeyBecomesBearerToken) {
 
 TEST(OpenAiCompletions, ExtraHeadersAreSent) {
     auto transport = s::make_shared<h::FakeTransport>();
-    transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     OpenAiCompletionsProvider provider(transport, OpenAiCompletionsOptions{.provider_id = "ollama",
                                                                            .extra_headers = {{"X-Test", "1"}}});
     CancelToken cancel;
@@ -574,7 +574,7 @@ TEST(OpenAiCompletions, BodyEndingWithoutFinishIsError) {
 
 TEST(OpenAiCompletions, CancelledBeforeStartIsAborted) {
     Harness t;
-    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(kFixture)));
+    t.transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
     t.cancel.cancel();
     vec<AssistantMessageEvent> ev = t.run();
     ASSERT_FALSE(ev.empty());
@@ -603,13 +603,13 @@ TEST(OpenAiCompletions, CancelMidStreamIsAbortedWithPartialContent) {
 
 TEST(OpenAiCompletions, StreamOutlivesProvider) {
     auto transport = s::make_shared<h::FakeTransport>();
-    transport->enqueue(h::FakeResponse::byte_by_byte(read_fixture(kFixture)));
+    transport->enqueue(h::FakeResponse::byte_by_byte(read_fixture(FIXTURE)));
     CancelToken cancel;
     EventStream stream = [&] {
         OpenAiCompletionsProvider provider(transport);
         return provider.stream(ollama(), ask("q"), {}, cancel);
     }();
-    EXPECT_EQ(text_of(stream.result()), kFixtureText);
+    EXPECT_EQ(text_of(stream.result()), FIXTURE_TEXT);
 }
 
 TEST(OpenAiCompletions, IdAndModels) {

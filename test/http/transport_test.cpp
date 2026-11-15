@@ -57,13 +57,13 @@ TEST(FindHeader, PrefixIsNotAMatch) {
 // FakeResponse builders
 // ===========================================================================
 
-static const str kBody = "data: {\"a\":1}\n\ndata: [DONE]\n\n";
+static const str BODY = "data: {\"a\":1}\n\ndata: [DONE]\n\n";
 
 TEST(FakeResponse, FromBodyIsOneChunk) {
-    FakeResponse r = FakeResponse::from_body(kBody);
+    FakeResponse r = FakeResponse::from_body(BODY);
     EXPECT_EQ(r.status, 200);
     ASSERT_EQ(r.chunks.size(), 1u);
-    EXPECT_EQ(r.chunks[0], kBody);
+    EXPECT_EQ(r.chunks[0], BODY);
 }
 
 TEST(FakeResponse, FromBodyKeepsStatus) {
@@ -75,16 +75,16 @@ TEST(FakeResponse, FromEmptyBodyHasNoChunks) {
 }
 
 TEST(FakeResponse, ByteByByte) {
-    FakeResponse r = FakeResponse::byte_by_byte(kBody);
-    ASSERT_EQ(r.chunks.size(), kBody.size());
+    FakeResponse r = FakeResponse::byte_by_byte(BODY);
+    ASSERT_EQ(r.chunks.size(), BODY.size());
     for (const str& c : r.chunks) EXPECT_EQ(c.size(), 1u);
-    EXPECT_EQ(join(r.chunks), kBody);
+    EXPECT_EQ(join(r.chunks), BODY);
 }
 
 TEST(FakeResponse, SplitRandomlyReassembles) {
     for (uint32_t seed = 0; seed < 50; ++seed) {
-        FakeResponse r = FakeResponse::split_randomly(kBody, seed, 5);
-        EXPECT_EQ(join(r.chunks), kBody) << "seed=" << seed;
+        FakeResponse r = FakeResponse::split_randomly(BODY, seed, 5);
+        EXPECT_EQ(join(r.chunks), BODY) << "seed=" << seed;
         for (const str& c : r.chunks) {
             EXPECT_GE(c.size(), 1u);
             EXPECT_LE(c.size(), 5u);
@@ -93,15 +93,15 @@ TEST(FakeResponse, SplitRandomlyReassembles) {
 }
 
 TEST(FakeResponse, SplitRandomlyIsDeterministic) {
-    EXPECT_EQ(FakeResponse::split_randomly(kBody, 7).chunks, FakeResponse::split_randomly(kBody, 7).chunks);
+    EXPECT_EQ(FakeResponse::split_randomly(BODY, 7).chunks, FakeResponse::split_randomly(BODY, 7).chunks);
 }
 
 TEST(FakeResponse, SplitRandomlyDependsOnSeed) {
     // With 16-byte max chunks over ~30 bytes, at least one of a few seeds differs.
-    auto base = FakeResponse::split_randomly(kBody, 1).chunks;
+    auto base = FakeResponse::split_randomly(BODY, 1).chunks;
     bool differs = false;
     for (uint32_t seed = 2; seed < 10; ++seed) {
-        differs = differs or FakeResponse::split_randomly(kBody, seed).chunks != base;
+        differs = differs or FakeResponse::split_randomly(BODY, seed).chunks != base;
     }
     EXPECT_TRUE(differs);
 }

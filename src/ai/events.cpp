@@ -1,5 +1,7 @@
 #include <ai/events.h>
 
+#include <util/language.h>
+
 namespace pi::ai {
 
 bool is_terminal(const AssistantMessageEvent& event) {
@@ -7,13 +9,8 @@ bool is_terminal(const AssistantMessageEvent& event) {
          s::holds_alternative<ErrorEvent>(event);
 }
 
-// TODO refactor to util and share
-namespace {
-template <typename... Ts> struct overloaded : Ts... { using Ts::operator()...; };
-} // namespace
-
 strv event_type(const AssistantMessageEvent& event) {
-  return s::visit(overloaded {
+  return s::visit(util::Overloaded {
     [](const StartEvent&) -> strv { return "start"; },
     [](const TextStartEvent&) -> strv { return "text_start"; },
     [](const TextDeltaEvent&) -> strv { return "text_delta"; },

@@ -11,10 +11,10 @@
 
 namespace {
 
-volatile s::sig_atomic_t gInterrupted = 0;
+volatile s::sig_atomic_t Interrupted = 0;
 
 void on_sigint(int){
-  gInterrupted = 1;
+  Interrupted = 1;
 }
 
 } // namespace
@@ -36,9 +36,9 @@ int main(int argc, char** argv) {
   pi::util::CancelToken cancel;
   s::signal(SIGINT, on_sigint);
   s::jthread watcher([&cancel](s::stop_token stop){
-    while (not stop.stop_requested() and not gInterrupted)
+    while (not stop.stop_requested() and not Interrupted)
       st::sleep_for(sc::milliseconds(50));
-    if (gInterrupted){
+    if (Interrupted){
       cancel.cancel();
       s::signal(SIGINT, SIG_DFL);
     }

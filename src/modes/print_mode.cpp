@@ -1,6 +1,7 @@
 #include <modes/print_mode.h>
 
 #include <ai/events.h>
+#include <util/language.h>
 
 namespace pi::modes {
 
@@ -13,11 +14,6 @@ ai::Context make_print_context(strv prompt, strv system_prompt) {
 str format_usage(const ai::Usage& usage) {
   return s::format("tokens: {} in, {} out, {} cached, {} total", usage.input, usage.output, usage.cache_read, usage.total_tokens);
 }
-
-// TODO refactor to util and share
-namespace {
-template <typename... Ts> struct overloaded : Ts... { using Ts::operator()...; };
-} // namespace
 
 int run_print_mode(
     ai::Provider& provider,
@@ -45,7 +41,7 @@ int run_print_mode(
   ai::EventStream stream = provider.stream(model, context, stream_options, cancel);
   while (auto event = stream.next()){
     // -1: keep streaming; otherwise the exit code.
-    int rcode = s::visit(overloaded {
+    int rcode = s::visit(util::Overloaded {
       [&](const ai::TextDeltaEvent& e) -> int {
         if (e.delta.empty()) return -1;
         out << e.delta;

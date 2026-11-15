@@ -23,10 +23,10 @@ namespace {
 namespace h = pi::http;
 namespace j = pi::json;
 
-volatile s::sig_atomic_t gInterrupted = 0;
+volatile s::sig_atomic_t Interrupted = 0;
 
 void on_sigint(int){
-  gInterrupted = 1;
+  Interrupted = 1;
 }
 
 // Parsed command line.  CLI11 binds to these by reference, so the instance must
@@ -56,9 +56,9 @@ int raw_chat(const CliOptions& options){
   pi::util::CancelToken cancel;
   s::signal(SIGINT, on_sigint);
   s::jthread watcher([&cancel](s::stop_token stop){
-    while (not stop.stop_requested() and not gInterrupted)
+    while (not stop.stop_requested() and not Interrupted)
       st::sleep_for(sc::milliseconds(50));
-    if (gInterrupted) cancel.cancel();
+    if (Interrupted) cancel.cancel();
   });
 
   h::CurlClient client;

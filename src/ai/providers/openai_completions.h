@@ -19,7 +19,7 @@
 
 namespace pi::ai::providers {
 
-inline constexpr strv kOpenAiCompletionsApi = "openai-completions";
+inline constexpr strv OPENAI_COMPLETIONS_API = "openai-completions";
 
 // A Model for an Ollama-served model id: api "openai-completions", provider
 // "ollama", name = id, base_url as given (trailing '/' removed), reasoning true
@@ -101,7 +101,7 @@ struct OpenAiCompletionsOptions {
 //  - transport errors: Cancelled → fail(aborted, "request aborted");
 //    Status → fail(error, "HTTP <status>: <body>"); others → fail(error, message);
 //    success → ChunkDecoder::on_end()
-//  - message metadata: api kOpenAiCompletionsApi, provider = provider_id, model = model.id
+//  - message metadata: api OPENAI_COMPLETIONS_API, provider = provider_id, model = model.id
 struct OpenAiCompletionsProvider : Provider {
   explicit OpenAiCompletionsProvider(sptr<http::HttpTransport> transport, OpenAiCompletionsOptions options = {});
 

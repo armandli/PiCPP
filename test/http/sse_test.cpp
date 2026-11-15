@@ -215,7 +215,7 @@ TEST(SseChunks, EmptyFeedIsHarmless) {
 }
 
 // An OpenAI / Ollama style stream with every tricky feature at once.
-static const str kStream =
+static const str STREAM =
     "\xEF\xBB\xBF"
     ": ping\r\n"
     "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\r\n\r\n"
@@ -233,26 +233,26 @@ TEST(SseChunks, RealisticStreamDecodesAsExpected) {
         ev("{\"usage\":\n{\"total\":3}}", "usage"),
         ev("[DONE]", "message", "42"),
     };
-    EXPECT_EQ(decode_all(kStream), want);
+    EXPECT_EQ(decode_all(STREAM), want);
 }
 
 TEST(SseChunks, ByteAtATimeEqualsAllAtOnce) {
-    EXPECT_EQ(decode_bytewise(kStream), decode_all(kStream));
+    EXPECT_EQ(decode_bytewise(STREAM), decode_all(STREAM));
 }
 
 TEST(SseChunks, RandomSplitsEqualAllAtOnce) {
-    vec<SseEvent> whole = decode_all(kStream);
+    vec<SseEvent> whole = decode_all(STREAM);
     for (uint32_t seed = 0; seed < 200; ++seed) {
-        ASSERT_EQ(decode_random(kStream, seed), whole) << "seed=" << seed;
+        ASSERT_EQ(decode_random(STREAM, seed), whole) << "seed=" << seed;
     }
 }
 
 TEST(SseChunks, EverySingleSplitPointEqualsAllAtOnce) {
-    vec<SseEvent> whole = decode_all(kStream);
-    for (s::size_t cut = 0; cut <= kStream.size(); ++cut) {
+    vec<SseEvent> whole = decode_all(STREAM);
+    for (s::size_t cut = 0; cut <= STREAM.size(); ++cut) {
         SseDecoder d;
-        vec<SseEvent> out = d.feed(strv(kStream).substr(0, cut));
-        for (SseEvent& e : d.feed(strv(kStream).substr(cut))) out.push_back(s::move(e));
+        vec<SseEvent> out = d.feed(strv(STREAM).substr(0, cut));
+        for (SseEvent& e : d.feed(strv(STREAM).substr(cut))) out.push_back(s::move(e));
         ASSERT_EQ(out, whole) << "cut=" << cut;
     }
 }

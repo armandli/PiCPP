@@ -6,13 +6,9 @@
 #include <http/sse.h>
 #include <json/parse.h>
 #include <json/write.h>
+#include <util/language.h>
 
 namespace pi::ai::providers {
-
-//TODO: consolidate all overloaded struct templates in repo
-namespace {
-template <typename... Ts> struct overloaded : Ts... { using Ts::operator()...; };
-} // namespace
 
 Model make_ollama_model(str id, str base_url) {
   //TODO: is there a better way to strip trailing slash ?
@@ -47,7 +43,7 @@ json::Value convert_messages(const Model& model, const Context& context) {
       }}));
   }
   for (const Message& msg : context.messages){
-    s::visit(overloaded {
+    s::visit(util::Overloaded {
       [&array](const UserMessage& m){
         json::Object obj;
         obj.set("role", json::Value("user"));
@@ -66,7 +62,7 @@ json::Value convert_messages(const Model& model, const Context& context) {
         }
         json::Array carray;
         for (const UserContent& content : m.content){
-          carray.push_back(s::visit(overloaded {
+          carray.push_back(s::visit(util::Overloaded {
             [](const TextContent& c) -> json::Value {
               return json::Value(json::Object{{
                 s::pair<str,json::Value>{"type", "text"},
@@ -295,7 +291,7 @@ EventStream OpenAiCompletionsProvider::stream(
   stream.adopt_worker(s::jthread([stream, model, cancel, url, headers, body, transport=mTransport, options=mOptions]() mutable {
     // worker's own copy keeps the stream alive
     AssistantMessage msg;
-    msg.api = kOpenAiCompletionsApi;
+    msg.api = OPENAI_COMPLETIONS_API;
     msg.provider = options.provider_id;
     msg.model = model.id;
     StreamBuilder builder(stream, s::move(msg));
