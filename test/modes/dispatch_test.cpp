@@ -74,18 +74,20 @@ TEST(ResolveModel, UnknownOrMissing) {
 // dispatch
 // ===========================================================================
 
-TEST(Dispatch, NoModeSelected) {
+TEST(Dispatch, NoModelIsAnError) {
+    s::istringstream in;
     s::ostringstream out, err;
-    EXPECT_EQ(dispatch(CliArgs{}, out, err, CancelToken{}), 2);
+    EXPECT_EQ(dispatch(CliArgs{}, in, out, err, CancelToken{}), 2);
     EXPECT_EQ(out.str(), "");
-    EXPECT_NE(err.str().find("-p"), str::npos) << err.str();
+    EXPECT_NE(err.str().find("--model"), str::npos) << err.str();
 }
 
 TEST(Dispatch, UnknownProvider) {
     CliArgs a = with_model("openai", "gpt");
     a.print_prompt = "q";
+    s::istringstream in;
     s::ostringstream out, err;
-    EXPECT_EQ(dispatch(a, out, err, CancelToken{}), 2);
+    EXPECT_EQ(dispatch(a, in, out, err, CancelToken{}), 2);
     EXPECT_NE(err.str().find(R"(unknown provider "openai")"), str::npos) << err.str();
 }
 
@@ -94,7 +96,40 @@ TEST(Dispatch, PrintModeRunsThroughTheProvider) {
     // fails, but the failure proves print mode reached the provider.
     CliArgs a = with_model("faux", "x");
     a.print_prompt = "q";
+    s::istringstream in;
     s::ostringstream out, err;
-    EXPECT_EQ(dispatch(a, out, err, CancelToken{}), 1);
+    EXPECT_EQ(dispatch(a, in, out, err, CancelToken{}), 1);
     EXPECT_NE(err.str().find("no faux response queued"), str::npos) << err.str();
+}
+
+TEST(Dispatch, PrintModeDoesNotReadStdin) {
+    CliArgs a = with_model("faux", "x");
+    a.print_prompt = "q";
+    s::istringstream in("never read\n");
+    s::ostringstream out, err;
+    dispatch(a, in, out, err, CancelToken{});
+    EXPECT_EQ(in.tellg(), 0) << "print mode must leave stdin alone";
+}
+
+TEST(Dispatch, NoPromptStartsTheRepl) {
+    s::istringstream in("/quit\n");
+    s::ostringstream out, err;
+    EXPECT_EQ(dispatch(with_model("faux", "x"), in, out, err, CancelToken{}), 0);
+    EXPECT_EQ(out.str(), "> ") << "the REPL prompt, then /quit";
+}
+
+TEST(Dispatch, ReplReachesTheProvider) {
+    // As above: the faux provider has nothing queued, so the turn fails, which
+    // the REPL reports and survives; EOF then ends it with 0.
+    s::istringstream in("hello\n");
+    s::ostringstream out, err;
+    EXPECT_EQ(dispatch(with_model("faux", "x"), in, out, err, CancelToken{}), 0);
+    EXPECT_NE(err.str().find("no faux response queued"), str::npos) << err.str();
+}
+
+TEST(OllamaBaseUrl, AppendsV1) {
+    CliArgs a = with_model("ollama", "m");
+    EXPECT_EQ(ollama_base_url(a), "http://localhost:11434/v1");
+    a.ollama_url = "http://gpu:11434/";
+    EXPECT_EQ(ollama_base_url(a), "http://gpu:11434/v1");
 }

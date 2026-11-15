@@ -10,7 +10,9 @@
 
 namespace pi::ai::providers {
 
-Model make_ollama_model(str id, str base_url) {
+Model make_ollama_model(str id, str base_url, const ModelDefaults& defaults) {
+  // TODO(M4): take context_window / max_tokens from `defaults`.
+  (void)defaults;
   //TODO: is there a better way to strip trailing slash ?
   if (base_url.size() > 0 and base_url.back() == '/')
     base_url = base_url.substr(0, base_url.size()-1);
@@ -25,6 +27,28 @@ Model make_ollama_model(str id, str base_url) {
     /*max_tokens*/8192,
     ollama_compat()
   };
+}
+
+s::expected<vec<Model>, str> parse_models_response(
+    strv body,
+    strv base_url,
+    const ModelDefaults& defaults
+){
+  // TODO(M4): see header.
+  (void)body; (void)base_url; (void)defaults;
+  return s::unexpected(str("parse_models_response: not implemented"));
+}
+
+s::expected<vec<Model>, str> list_models(
+    http::HttpTransport& transport,
+    strv base_url,
+    const ModelDefaults& defaults,
+    const util::CancelToken& cancel,
+    const http::HttpHeaders& extra_headers
+){
+  // TODO(M4): see header.
+  (void)transport; (void)base_url; (void)defaults; (void)cancel; (void)extra_headers;
+  return s::unexpected(str("list_models: not implemented"));
 }
 
 json::Value convert_messages(const Model& model, const Context& context) {
@@ -266,6 +290,7 @@ strv OpenAiCompletionsProvider::id() const {
 }
 
 vec<Model> OpenAiCompletionsProvider::models() {
+  // TODO(M4): see header.
   return {};
 }
 

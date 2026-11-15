@@ -1,6 +1,8 @@
 #ifndef AI_PROVIDERS_OPENAI_COMPLETIONS_H
 #define AI_PROVIDERS_OPENAI_COMPLETIONS_H
 
+#include <cstdint>
+#include <expected>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,6 +13,7 @@
 #include <http/transport.h>
 #include <json/value.h>
 #include <util/aliases.h>
+#include <util/cancel.h>
 
 // OpenAI chat-completions over SSE, as served by Ollama's /v1 endpoint
 // (Pi: ai/src/api/openai-completions.ts — buildParams, convertMessages, the
@@ -21,11 +24,47 @@ namespace pi::ai::providers {
 
 inline constexpr strv OPENAI_COMPLETIONS_API = "openai-completions";
 
+// Limits for a model when the server doesn't report them: Ollama's /v1 API
+// never does.  Configurable per model from models.json in M7.
+struct ModelDefaults {
+  int64_t context_window = 32768;
+  int64_t max_tokens     = 8192;
+
+  bool operator==(const ModelDefaults&) const = default;
+};
+
 // A Model for an Ollama-served model id: api "openai-completions", provider
 // "ollama", name = id, base_url as given (trailing '/' removed), reasoning true
 // (Ollama emits delta.reasoning for thinking models and nothing otherwise),
-// context_window 32768, max_tokens 8192, compat = ollama_compat().
-Model make_ollama_model(str id, str base_url = "http://localhost:11434/v1");
+// context_window / max_tokens from `defaults`, compat = ollama_compat().
+Model make_ollama_model(
+    str id,
+    str base_url = "http://localhost:11434/v1",
+    const ModelDefaults& defaults = {});
+
+// The body of GET <base_url>/models (OpenAI's model list, as Ollama serves it):
+//   {"object":"list","data":[{"id":"qwen3.8:27b-mlx","object":"model",
+//     "created":1794783953,"owned_by":"library"}, ...]}
+// Each data[i] with a string "id" → make_ollama_model(id, base_url, defaults),
+// in server order; entries without one are skipped.  Embedding models are
+// listed too: /v1 doesn't say which models can chat.
+// Errors: unparsable JSON → "invalid models response: <parse error>";
+// no "data" array → "invalid models response: no data array".
+s::expected<vec<Model>, str> parse_models_response(
+    strv body,
+    strv base_url,
+    const ModelDefaults& defaults = {});
+
+// GET <base_url>/models with "Accept: application/json" then `extra_headers`,
+// and parse_models_response(...) the body.  `base_url` has no trailing '/'.
+// Transport errors: Cancelled → "request aborted"; Status →
+// "HTTP <status>: <body>"; others → their message.
+s::expected<vec<Model>, str> list_models(
+    http::HttpTransport& transport,
+    strv base_url,
+    const ModelDefaults& defaults,
+    const util::CancelToken& cancel,
+    const http::HttpHeaders& extra_headers = {});
 
 // The "messages" array (Pi: convertMessages):
 //  - system prompt (if non-empty) first: {"role":"developer"} when
@@ -87,6 +126,9 @@ private:
 struct OpenAiCompletionsOptions {
   str               provider_id = "ollama";
   http::HttpHeaders extra_headers;  // sent with every request
+  // Server for models(); stream() uses Model::base_url instead.
+  str               base_url = "http://localhost:11434/v1";
+  ModelDefaults     model_defaults;  // limits for the models models() lists
 };
 
 // stream():
@@ -106,7 +148,9 @@ struct OpenAiCompletionsProvider : Provider {
   explicit OpenAiCompletionsProvider(sptr<http::HttpTransport> transport, OpenAiCompletionsOptions options = {});
 
   strv id() const override;
-  // Static until M7 queries GET /v1/models: empty.
+  // list_models(*transport, options.base_url, options.model_defaults, a fresh
+  // CancelToken, options.extra_headers); any error → empty (the caller can't
+  // tell "no models" from "server down" yet; M7's registry reports errors).
   vec<Model> models() override;
   EventStream stream(
       const Model& model,

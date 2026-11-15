@@ -9,8 +9,8 @@
 #include <util/aliases.h>
 
 // Command-line parsing for the pi executable (Pi: coding-agent/src/cli/args.ts).
-// M3 covers print mode only; --continue, --resume, --mode and --session follow
-// in later milestones.
+// M3 covers print mode and M4 the REPL (no -p); --continue, --resume, --mode
+// and --session follow in later milestones.
 
 namespace pi::modes {
 

@@ -44,5 +44,5 @@ int main(int argc, char** argv) {
     }
   });
 
-  return pi::modes::dispatch(*args, s::cout, s::cerr, cancel);
+  return pi::modes::dispatch(*args, s::cin, s::cout, s::cerr, cancel);
 }

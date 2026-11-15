@@ -4,20 +4,29 @@
 #include <ai/providers/openai_completions.h>
 #include <http/curl_client.h>
 #include <modes/print_mode.h>
+#include <modes/repl_mode.h>
 
 namespace pi::modes {
 
 uptr<ai::Provider> make_provider(const CliArgs& args) {
   if (args.model.has_value() and (*args.model).provider == "ollama"){
+    ai::providers::OpenAiCompletionsOptions options;
+    options.provider_id = (*args.model).provider;
+    // TODO(M4): options.base_url = ollama_base_url(args);
     return s::make_unique<ai::providers::OpenAiCompletionsProvider>(
-        s::make_shared<http::CurlClient>(http::CurlOptions{}),
-        ai::providers::OpenAiCompletionsOptions{(*args.model).provider, http::HttpHeaders{}}
-    );
+        s::make_shared<http::CurlClient>(http::CurlOptions{}), s::move(options));
   }
   if (args.model.has_value() and (*args.model).provider == "faux"){
     return s::make_unique<ai::providers::FauxProvider>(ai::providers::FauxOptions{0, (*args.model).provider});
   }
   return nullptr;
+}
+
+str ollama_base_url(const CliArgs& args) {
+  // TODO(M4): see header; then use it in resolve_model (replacing the inline
+  // slash strip below) and make_provider.
+  (void)args;
+  return {};
 }
 
 opt<ai::Model> resolve_model(const CliArgs& args) {
@@ -37,8 +46,16 @@ opt<ai::Model> resolve_model(const CliArgs& args) {
   return s::nullopt;
 }
 
-int dispatch(const CliArgs& args, s::ostream& out, s::ostream& err, util::CancelToken cancel) {
-  // interactive mode not implemented until M4
+int dispatch(
+    const CliArgs& args,
+    s::istream& in,
+    s::ostream& out,
+    s::ostream& err,
+    util::CancelToken cancel
+){
+  // TODO(M4): see header: check for a missing --model first, and run the REPL
+  // (reading `in`) instead of this message when -p isn't given.
+  (void)in;
   if (not args.print_prompt){
     err << "nothing to do: interactive mode arrives in M4; use -p\n";
     return 2;

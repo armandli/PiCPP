@@ -80,3 +80,16 @@ TEST(OpenAiCompletionsLive, StreamsAReply) {
     EXPECT_GT(m.usage.output, 0);
     EXPECT_EQ(m.model, model_id);
 }
+
+TEST(OpenAiCompletionsLive, ListsInstalledModels) {
+    auto client = s::make_shared<h::CurlClient>(h::CurlOptions{.connect_timeout = sc::milliseconds(1000)});
+    str model_id = pick_model(*client);
+    if (model_id.empty()) GTEST_SKIP() << "Ollama not reachable at " << base_url() << " or no chat model installed";
+
+    CancelToken cancel;
+    auto models = list_models(*client, base_url() + "/v1", {}, cancel);
+    ASSERT_TRUE(models.has_value()) << models.error();
+    bool found = false;
+    for (const Model& m : *models) found = found or m.id == model_id;
+    EXPECT_TRUE(found) << model_id << " (from /api/tags) missing from /v1/models";
+}

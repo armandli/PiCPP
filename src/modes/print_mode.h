@@ -45,6 +45,28 @@ int run_print_mode(
     util::CancelToken cancel
 );
 
+// What print_reply() returns: run_print_mode's exit code and the terminal
+// event's message (DoneEvent / ErrorEvent::message; on the "stream ended
+// without a result" path, an empty message with stop_reason error).
+struct PrintedReply {
+  int                  code = 1;
+  ai::AssistantMessage message;
+};
+
+// run_print_mode() for callers that keep the conversation (the REPL): prints
+// exactly what run_print_mode prints and also hands back the reply.  Once this
+// exists, run_print_mode is `return print_reply(...).code;`.
+PrintedReply print_reply(
+    ai::Provider& provider,
+    const ai::Model& model,
+    const ai::Context& context,
+    const ai::StreamOptions& stream_options,
+    const PrintOptions& options,
+    s::ostream& out,
+    s::ostream& err,
+    util::CancelToken cancel
+);
+
 }  // namespace pi::modes
 
 #endif  // MODES_PRINT_MODE_H

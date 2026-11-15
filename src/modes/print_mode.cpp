@@ -92,4 +92,22 @@ int run_print_mode(
   return 1;
 }
 
+PrintedReply print_reply(
+    ai::Provider& provider,
+    const ai::Model& model,
+    const ai::Context& context,
+    const ai::StreamOptions& stream_options,
+    const PrintOptions& options,
+    s::ostream& out,
+    s::ostream& err,
+    util::CancelToken cancel
+){
+  // TODO(M4): see header.  Move run_print_mode's event loop here, capture the
+  // terminal event's message, and reduce run_print_mode to a wrapper; its
+  // tests must stay green.
+  (void)provider; (void)model; (void)context; (void)stream_options;
+  (void)options; (void)out; (void)err; (void)cancel;
+  return {};
+}
+
 }  // namespace pi::modes

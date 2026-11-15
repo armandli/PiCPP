@@ -37,7 +37,7 @@ struct Provider {
   // Pi's provider id, e.g. "ollama", "faux".
   virtual strv id() const = 0;
 
-  // The models this provider can serve (static for now; M7 lists Ollama's).
+  // The models this provider can serve (Ollama: GET /v1/models since M4).
   virtual vec<Model> models() = 0;
 
   virtual EventStream stream(

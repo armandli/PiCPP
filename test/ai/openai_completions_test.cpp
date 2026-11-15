@@ -122,6 +122,105 @@ TEST(MakeOllamaModel, DefaultBaseUrl) {
     EXPECT_EQ(make_ollama_model("m").base_url, "http://localhost:11434/v1");
 }
 
+TEST(MakeOllamaModel, DefaultLimits) {
+    Model m = make_ollama_model("m");
+    EXPECT_EQ(m.context_window, ModelDefaults{}.context_window);
+    EXPECT_EQ(m.max_tokens, ModelDefaults{}.max_tokens);
+}
+
+TEST(MakeOllamaModel, CustomLimits) {
+    Model m = make_ollama_model("m", "http://h/v1", ModelDefaults{.context_window = 131072, .max_tokens = 1024});
+    EXPECT_EQ(m.context_window, 131072);
+    EXPECT_EQ(m.max_tokens, 1024);
+}
+
+// ===========================================================================
+// Model discovery: GET /v1/models
+// ===========================================================================
+
+namespace {
+// Shape of Ollama 0.40's /v1/models, trimmed.
+constexpr strv MODELS_BODY = R"({"object":"list","data":[)"
+    R"({"id":"qwen3.8:27b-mlx","object":"model","created":1794783953,"owned_by":"library"},)"
+    R"({"id":"gemma4:31b-mlx","object":"model","created":1794700000,"owned_by":"library"}]})";
+}  // namespace
+
+TEST(ParseModelsResponse, OllamaList) {
+    auto models = parse_models_response(MODELS_BODY, "http://h:1/v1", ModelDefaults{.context_window = 4096, .max_tokens = 512});
+    ASSERT_TRUE(models.has_value()) << models.error();
+    ASSERT_EQ(models->size(), 2u);
+    EXPECT_EQ((*models)[0], make_ollama_model("qwen3.8:27b-mlx", "http://h:1/v1", ModelDefaults{.context_window = 4096, .max_tokens = 512}));
+    EXPECT_EQ((*models)[1].id, "gemma4:31b-mlx") << "server order is kept";
+}
+
+TEST(ParseModelsResponse, EmptyList) {
+    auto models = parse_models_response(R"({"object":"list","data":[]})", "http://h/v1");
+    ASSERT_TRUE(models.has_value()) << models.error();
+    EXPECT_TRUE(models->empty());
+}
+
+TEST(ParseModelsResponse, EntriesWithoutAStringIdAreSkipped) {
+    auto models = parse_models_response(R"({"data":[{"object":"model"},{"id":7},{"id":"ok"}]})", "http://h/v1");
+    ASSERT_TRUE(models.has_value()) << models.error();
+    ASSERT_EQ(models->size(), 1u);
+    EXPECT_EQ((*models)[0].id, "ok");
+}
+
+TEST(ParseModelsResponse, Errors) {
+    auto bad_json = parse_models_response("{nope", "http://h/v1");
+    ASSERT_FALSE(bad_json.has_value());
+    EXPECT_TRUE(bad_json.error().starts_with("invalid models response: ")) << bad_json.error();
+
+    auto no_data = parse_models_response(R"({"object":"list"})", "http://h/v1");
+    ASSERT_FALSE(no_data.has_value());
+    EXPECT_EQ(no_data.error(), "invalid models response: no data array");
+
+    EXPECT_FALSE(parse_models_response(R"({"data":{}})", "http://h/v1").has_value());
+}
+
+TEST(ListModels, GetsTheModelsEndpoint) {
+    h::FakeTransport transport;
+    transport.enqueue(h::FakeResponse::from_body(str(MODELS_BODY)));
+    CancelToken cancel;
+    auto models = list_models(transport, "http://h:1/v1", {}, cancel, {{"X-Test", "1"}});
+    ASSERT_TRUE(models.has_value()) << models.error();
+    EXPECT_EQ(models->size(), 2u);
+    ASSERT_EQ(transport.requests().size(), 1u);
+    const h::RecordedRequest& req = transport.requests()[0];
+    EXPECT_EQ(req.method, "GET");
+    EXPECT_EQ(req.url, "http://h:1/v1/models");
+    ASSERT_NE(header(req.headers, "Accept"), nullptr);
+    EXPECT_EQ(header(req.headers, "Accept")->value, "application/json");
+    ASSERT_NE(header(req.headers, "X-Test"), nullptr);
+}
+
+TEST(ListModels, HttpErrorStatus) {
+    h::FakeTransport transport;
+    transport.enqueue(h::FakeResponse::from_body("server down", 503));
+    CancelToken cancel;
+    auto models = list_models(transport, "http://h/v1", {}, cancel);
+    ASSERT_FALSE(models.has_value());
+    EXPECT_EQ(models.error(), "HTTP 503: server down");
+}
+
+TEST(ListModels, ConnectionError) {
+    h::FakeTransport transport;  // nothing queued
+    CancelToken cancel;
+    auto models = list_models(transport, "http://h/v1", {}, cancel);
+    ASSERT_FALSE(models.has_value());
+    EXPECT_EQ(models.error(), "no fake response queued");
+}
+
+TEST(ListModels, Cancelled) {
+    h::FakeTransport transport;
+    transport.enqueue(h::FakeResponse::from_body(str(MODELS_BODY)));
+    CancelToken cancel;
+    cancel.cancel();
+    auto models = list_models(transport, "http://h/v1", {}, cancel);
+    ASSERT_FALSE(models.has_value());
+    EXPECT_EQ(models.error(), "request aborted");
+}
+
 // ===========================================================================
 // convert_messages
 // ===========================================================================
@@ -515,8 +614,9 @@ TEST(OpenAiCompletions, ApiKeyBecomesBearerToken) {
 TEST(OpenAiCompletions, ExtraHeadersAreSent) {
     auto transport = s::make_shared<h::FakeTransport>();
     transport->enqueue(h::FakeResponse::from_body(read_fixture(FIXTURE)));
-    OpenAiCompletionsProvider provider(transport, OpenAiCompletionsOptions{.provider_id = "ollama",
-                                                                           .extra_headers = {{"X-Test", "1"}}});
+    OpenAiCompletionsOptions options;
+    options.extra_headers = {{"X-Test", "1"}};
+    OpenAiCompletionsProvider provider(transport, options);
     CancelToken cancel;
     EventStream stream = provider.stream(ollama(), ask("q"), {}, cancel);
     stream.result();
@@ -613,7 +713,31 @@ TEST(OpenAiCompletions, StreamOutlivesProvider) {
 }
 
 TEST(OpenAiCompletions, IdAndModels) {
-    Harness t;
+    Harness t;  // nothing queued: models() can't reach the server
     EXPECT_EQ(t.provider.id(), "ollama");
     EXPECT_TRUE(t.provider.models().empty());
+}
+
+TEST(OpenAiCompletions, ModelsQueriesTheServer) {
+    auto transport = s::make_shared<h::FakeTransport>();
+    transport->enqueue(h::FakeResponse::from_body(str(MODELS_BODY)));
+    OpenAiCompletionsProvider provider(transport, OpenAiCompletionsOptions{
+        .provider_id = "ollama",
+        .extra_headers = {},
+        .base_url = "http://gpu:11434/v1",
+        .model_defaults = ModelDefaults{.context_window = 65536, .max_tokens = 2048},
+    });
+    vec<Model> models = provider.models();
+    ASSERT_EQ(models.size(), 2u);
+    EXPECT_EQ(models[0].base_url, "http://gpu:11434/v1");
+    EXPECT_EQ(models[0].context_window, 65536);
+    ASSERT_EQ(transport->requests().size(), 1u);
+    EXPECT_EQ(transport->requests()[0].url, "http://gpu:11434/v1/models");
+}
+
+TEST(OpenAiCompletions, ModelsIsEmptyOnHttpError) {
+    auto transport = s::make_shared<h::FakeTransport>();
+    transport->enqueue(h::FakeResponse::from_body("nope", 500));
+    OpenAiCompletionsProvider provider(transport);
+    EXPECT_TRUE(provider.models().empty());
 }

@@ -155,3 +155,60 @@ TEST(PrintMode, SendsTheContextToTheProvider) {
     ASSERT_EQ(p.calls().size(), 1u);
     EXPECT_EQ(p.calls()[0], c);
 }
+
+// ===========================================================================
+// print_reply
+// ===========================================================================
+
+TEST(PrintReply, ReturnsTheDoneMessage) {
+    FauxProvider p;
+    p.enqueue(with_usage(FauxResponse::text("Hello")));
+    s::ostringstream out, err;
+    PrintedReply r = print_reply(p, ai::Model{}, make_print_context("q"), {}, {}, out, err, CancelToken{});
+    EXPECT_EQ(r.code, 0);
+    EXPECT_EQ(ai::text_of(r.message), "Hello");
+    EXPECT_EQ(r.message.stop_reason, ai::StopReason::stop);
+    EXPECT_EQ(r.message.usage.total_tokens, 61);
+    EXPECT_EQ(out.str(), "Hello\n");
+}
+
+TEST(PrintReply, ReturnsTheErrorMessage) {
+    FauxProvider p;
+    FauxResponse resp = FauxResponse::text("par");
+    resp.error = "boom";
+    p.enqueue(resp);
+    s::ostringstream out, err;
+    PrintedReply r = print_reply(p, ai::Model{}, make_print_context("q"), {}, {}, out, err, CancelToken{});
+    EXPECT_EQ(r.code, 1);
+    EXPECT_EQ(r.message.stop_reason, ai::StopReason::error);
+    EXPECT_EQ(r.message.error_message, "boom");
+    EXPECT_EQ(ai::text_of(r.message), "par") << "partial content is kept";
+}
+
+TEST(PrintReply, AbortedIs130) {
+    FauxProvider p;
+    p.enqueue(FauxResponse::text("never"));
+    CancelToken cancel;
+    cancel.cancel();
+    s::ostringstream out, err;
+    PrintedReply r = print_reply(p, ai::Model{}, make_print_context("q"), {}, {}, out, err, cancel);
+    EXPECT_EQ(r.code, 130);
+    EXPECT_EQ(r.message.stop_reason, ai::StopReason::aborted);
+}
+
+TEST(PrintReply, PrintsExactlyWhatRunPrintModePrints) {
+    PrintOptions options{.show_thinking = true, .show_usage = true};
+    auto script = [] {
+        FauxResponse r{.steps = {FauxThinking{"plan"}, FauxText{"4"}}, .stop_reason = {}, .usage = {}, .error = {}};
+        return with_usage(r);
+    };
+    FauxProvider a(FauxOptions{.chunk_size = 1}), b(FauxOptions{.chunk_size = 1});
+    a.enqueue(script());
+    b.enqueue(script());
+    s::ostringstream out_a, err_a, out_b, err_b;
+    int code = run_print_mode(a, ai::Model{}, make_print_context("q"), {}, options, out_a, err_a, CancelToken{});
+    PrintedReply r = print_reply(b, ai::Model{}, make_print_context("q"), {}, options, out_b, err_b, CancelToken{});
+    EXPECT_EQ(r.code, code);
+    EXPECT_EQ(out_b.str(), out_a.str());
+    EXPECT_EQ(err_b.str(), err_a.str());
+}
