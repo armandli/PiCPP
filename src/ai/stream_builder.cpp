@@ -25,6 +25,7 @@ StreamBuilder::StreamBuilder(EventStream stream, AssistantMessage initial)
   , mMessage(s::move(initial)) {
   if (mMessage.timestamp == 0)
     mMessage.timestamp = now_ms();
+  // TODO(M3): stamp mMessage.stop_reason = StopReason::pending (see header).
 }
 
 void StreamBuilder::start() {
@@ -172,6 +173,7 @@ void StreamBuilder::set_usage(const Usage& usage) {
 
 void StreamBuilder::finish(StopReason reason) {
   if (mFinished) return;
+  // TODO(M3): also route pending and deferred to fail() (as StopReason::error; see header).
   if (reason == StopReason::error or reason == StopReason::aborted){
     fail(reason, "stream finished with reason " + str(to_string(reason)));
     return;
@@ -217,6 +219,8 @@ void StreamBuilder::fail(StopReason reason, str message) {
          case StopReason::length:
          case StopReason::toolUse:
          case StopReason::error:
+         case StopReason::pending:
+         case StopReason::deferred:
     mMessage.stop_reason = StopReason::error;
   break; case StopReason::aborted:
     mMessage.stop_reason = StopReason::aborted;

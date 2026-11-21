@@ -394,3 +394,43 @@ TEST(StreamBuilder, ZeroTimestampIsStampedWithNow) {
     StreamBuilder builder(stream, AssistantMessage{});
     EXPECT_GT(builder.message().timestamp, 1'700'000'000'000);
 }
+
+// ===========================================================================
+// TODO(M3): StopReason::pending.  These fail until the TODO(M3) stubs in
+// ai/stream_builder.cpp are implemented.
+// ===========================================================================
+
+TEST(StreamBuilder, PartialMessageIsPendingUntilTerminal) {
+    Fixture f;
+    EXPECT_EQ(f.builder.message().stop_reason, StopReason::pending);
+    f.builder.start();
+    f.builder.text_delta("hi");
+    EXPECT_EQ(f.builder.message().stop_reason, StopReason::pending);
+    f.builder.finish(StopReason::stop);
+    EXPECT_EQ(f.builder.message().stop_reason, StopReason::stop);
+}
+
+TEST(StreamBuilder, FinishWithPendingIsAnError) {
+    Fixture f;
+    f.builder.start();
+    f.builder.finish(StopReason::pending);
+    vec<AssistantMessageEvent> ev = f.events();
+    ASSERT_FALSE(ev.empty());
+    EXPECT_EQ(kind_name(ev.back()), "error");
+    EXPECT_EQ(f.builder.message().stop_reason, StopReason::error);
+    EXPECT_EQ(f.builder.message().error_message, "stream finished with reason pending");
+}
+
+TEST(StreamBuilder, FinishWithDeferredIsAnError) {
+    Fixture f;
+    f.builder.start();
+    f.builder.finish(StopReason::deferred);
+    EXPECT_EQ(f.stream.result().stop_reason, StopReason::error);
+    EXPECT_EQ(f.builder.message().error_message, "stream finished with reason deferred");
+}
+
+TEST(StreamBuilder, FailWithPendingBecomesError) {
+    Fixture f;
+    f.builder.fail(StopReason::pending, "odd");
+    EXPECT_EQ(f.stream.result().stop_reason, StopReason::error);
+}

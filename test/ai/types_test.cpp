@@ -353,3 +353,82 @@ TEST(DecodeError, ContextReportsMessageIndex) {
 TEST(DecodeError, ModelRequiresId) {
     EXPECT_FALSE(decode_model(parse_or_die(R"({"name":"x"})")).has_value());
 }
+
+// ===========================================================================
+// TODO(M3): Pi v1.5.0 follow-ups.  These fail until the TODO(M3) stubs in
+// ai/types.cpp are implemented.
+// ===========================================================================
+
+TEST(StopReason, PendingAndDeferredUsePiNames) {
+    EXPECT_EQ(to_string(StopReason::pending), "pending");
+    EXPECT_EQ(to_string(StopReason::deferred), "deferred");
+    EXPECT_EQ(parse_stop_reason("pending"), StopReason::pending);
+    EXPECT_EQ(parse_stop_reason("deferred"), StopReason::deferred);
+}
+
+TEST(Decode, AssistantWithDeferredStopReasonRoundTrips) {
+    AssistantMessage a = sample_assistant();
+    a.stop_reason = StopReason::deferred;
+    auto back = decode_message(encode(Message{a}));
+    ASSERT_TRUE(back.has_value()) << back.error();
+    EXPECT_EQ(*back, Message{a});
+}
+
+TEST(DecodeError, BadStopReasonListsEveryReason) {
+    auto m = decode_message(parse_or_die(R"({"role":"assistant","content":[],"stopReason":"tool_use"})"));
+    ASSERT_FALSE(m.has_value());
+    EXPECT_NE(m.error().find("pending"), str::npos) << m.error();
+    EXPECT_NE(m.error().find("deferred"), str::npos) << m.error();
+}
+
+TEST(Encode, SystemMessageMinimal) {
+    Message m = SystemMessage{"You are helpful.", {}, {}, {}, 5};
+    EXPECT_EQ(j::to_json(encode(m)), R"({"role":"system","content":"You are helpful.","timestamp":5})");
+}
+
+TEST(Encode, SystemMessageFull) {
+    SystemMessage sm;
+    sm.content = "";
+    sm.sections = {{"rules", str("<rules>Be brief.</rules>")}, {"cwd", s::nullopt}};
+    sm.tools_added = {Tool{"read", "Read a file", parse_or_die(R"({"type":"object"})")}};
+    sm.tools_removed = {ToolReference{"bash"}};
+    sm.timestamp = 9;
+    EXPECT_EQ(j::to_json(encode(Message{sm})),
+              R"({"role":"system","content":"","sections":{"rules":"<rules>Be brief.</rules>","cwd":null},)"
+              R"("toolsAdded":[{"name":"read","description":"Read a file","parameters":{"type":"object"}}],)"
+              R"("toolsRemoved":[{"name":"bash"}],"timestamp":9})");
+}
+
+TEST(Decode, SystemMessageRoundTrip) {
+    SystemMessage sm;
+    sm.content = "base";
+    sm.sections = {{"b", str("second")}, {"a", str("first")}, {"gone", s::nullopt}};
+    sm.tools_added = {Tool{"read", "Read a file", parse_or_die(R"({"type":"object"})")}};
+    sm.tools_removed = {ToolReference{"bash"}};
+    sm.timestamp = 11;
+    auto back = decode_message(encode(Message{sm}));
+    ASSERT_TRUE(back.has_value()) << back.error();
+    EXPECT_EQ(*back, Message{sm});
+}
+
+TEST(Decode, SystemMessageContentMayBeTextBlocks) {
+    auto m = decode_message(parse_or_die(
+        R"({"role":"system","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}],"timestamp":1})"));
+    ASSERT_TRUE(m.has_value()) << m.error();
+    EXPECT_EQ(*m, (Message{SystemMessage{"a\nb", {}, {}, {}, 1}}));
+}
+
+TEST(DecodeError, ToolReferenceRequiresName) {
+    auto m = decode_message(parse_or_die(R"({"role":"system","content":"","toolsRemoved":[{}]})"));
+    ASSERT_FALSE(m.has_value());
+    EXPECT_NE(m.error().find("toolsRemoved[0].name"), str::npos) << m.error();
+}
+
+TEST(Decode, ModelMidConvoSystemMessagesFlagRoundTrips) {
+    Model m;
+    m.id = "x";
+    m.compat.supports_mid_convo_system_messages = true;
+    auto back = decode_model(encode(m));
+    ASSERT_TRUE(back.has_value()) << back.error();
+    EXPECT_TRUE(back->compat.supports_mid_convo_system_messages);
+}

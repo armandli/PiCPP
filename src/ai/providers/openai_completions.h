@@ -75,6 +75,15 @@ s::expected<vec<Model>, str> list_models(
 //  - AssistantMessage: {"role":"assistant","content":text_of(message)}; thinking
 //    is dropped; skipped entirely if it has no text (tool calls come in M5)
 //  - ToolResultMessage: skipped for now (TODO(M5): {"role":"tool",...})
+//
+// TODO(M3): build from the transcript, like Pi's convertMessages:
+//   TranscriptContext t = resolve_transcript(normalize_context(context),
+//                                            model.compat.supports_mid_convo_system_messages);
+// then walk t.messages.  A SystemMessage at index 0 → system_message_text(m),
+// a later one (only left in place when the model supports it) →
+// render_system_message_update(m); either way skipped when the text is empty,
+// with the developer/system role choice above.  The two Context fields are then
+// no longer read directly, and every existing ConvertMessages test still passes.
 json::Value convert_messages(const Model& model, const Context& context);
 
 // The full request body (Pi: buildParams), keys in this order:

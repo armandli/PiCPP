@@ -31,6 +31,12 @@ struct StreamOptions {
 //  - `cancel` is a copy that shares state with the caller's token; once it is
 //    cancelled the stream ends with ErrorEvent{aborted} as soon as possible
 //  - exactly one terminal event, per EventStream's rules
+//  - TODO(M3): read the prompt and tools from
+//    resolve_transcript(normalize_context(context), ...) (ai/transcript.h), not
+//    from context.system_prompt / context.tools; Pi's providers only ever see
+//    the transcript
+//  - the partial message is StopReason::pending until the terminal event (M3;
+//    StreamBuilder does this)
 struct Provider {
   virtual ~Provider() = default;
 

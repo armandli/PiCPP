@@ -92,6 +92,10 @@ enum class StopReason : uint8_t {
   toolUse,  // wants tool results (M5)
   error,    // provider / transport failure
   aborted,  // cancelled through the CancelToken
+  // TODO(M3): Pi v1.5.0 added these two.  Wire them through to_string,
+  // parse_stop_reason, the decode error text and StreamBuilder (see their TODOs).
+  pending,  // partial message: the real reason isn't known yet
+  deferred, // Pi's streamDeferred polling only (durable, not ported): decode, never produce
 };
 
 // ---------------------------------------------------------------------------
@@ -136,7 +140,51 @@ struct ToolResultMessage {
   bool operator==(const ToolResultMessage&) const = default;
 };
 
-using Message = s::variant<UserMessage, AssistantMessage, ToolResultMessage>;
+// A tool the model may call (fully used from M5).  `parameters` is a JSON schema.
+// Defined here, ahead of Model and Context, because SystemMessage holds tools.
+struct Tool {
+  str         name;
+  str         description;
+  json::Value parameters = json::object_value();
+
+  bool operator==(const Tool&) const = default;
+};
+
+// A tool named by reference only, e.g. in SystemMessage::tools_removed.
+// {"name":"read"}
+struct ToolReference {
+  str name;
+
+  bool operator==(const ToolReference&) const = default;
+};
+
+// Named prompt sections, in declaration order (Pi: Record<string, string | null>).
+// nullopt is JSON null: "remove this section" in a later system message.
+using SystemSections = vec<s::pair<str, opt<str>>>;
+
+// Pi v1.5.0 carries the system prompt and the tool set inside the transcript
+// (Pi: SystemMessage in ai/src/types.ts; helpers in ai/transcript.h).  The
+// leading system message holds the base prompt, its sections and the initial
+// tools; a later one adds instructions, patches sections by name and changes
+// the tool set from that point on.
+//
+// {"role":"system","content":"...","sections":{"rules":"<rules>..</rules>"},
+//  "toolsAdded":[...],"toolsRemoved":[{"name":"read"}],"timestamp":<ms>}
+// TODO(M3): encode() writes content as a string and omits sections /
+// toolsAdded / toolsRemoved when empty.  decode accepts content as a string or
+// an array of text blocks (joined with "\n", like Pi's contentText).
+struct SystemMessage {
+  str                content;
+  SystemSections     sections;
+  vec<Tool>          tools_added;    // JSON: "toolsAdded"; full definitions
+  vec<ToolReference> tools_removed;  // JSON: "toolsRemoved"
+  int64_t            timestamp = 0;
+
+  bool operator==(const SystemMessage&) const = default;
+};
+
+// SystemMessage is last so a default-constructed Message stays a UserMessage.
+using Message = s::variant<UserMessage, AssistantMessage, ToolResultMessage, SystemMessage>;
 
 // ---------------------------------------------------------------------------
 // Model / tools / context
@@ -149,6 +197,11 @@ struct OpenAiCompat {
   bool supports_reasoning_effort   = true;   // else never send "reasoning_effort"
   bool supports_usage_in_streaming = true;   // send stream_options.include_usage
   str  max_tokens_field = "max_completion_tokens";  // Ollama: "max_tokens"
+  // Pi: compat.supportsMidConvoSystemMessages.  When false (Ollama, and the
+  // default until the M15 catalog says otherwise) resolve_transcript collapses
+  // every system message into the leading one.
+  // TODO(M3): encode / decode as "supportsMidConvoSystemMessages".
+  bool supports_mid_convo_system_messages = false;
 
   bool operator==(const OpenAiCompat&) const = default;
 };
@@ -167,18 +220,14 @@ struct Model {
   bool operator==(const Model&) const = default;
 };
 
-// A tool the model may call (fully used from M5).  `parameters` is a JSON schema.
-struct Tool {
-  str         name;
-  str         description;
-  json::Value parameters = json::object_value();
-
-  bool operator==(const Tool&) const = default;
-};
-
 // Everything sent to the model for one request.
 // JSON: {"systemPrompt":"...","messages":[...],"tools":[...]}; systemPrompt and
 // tools are omitted when empty.
+//
+// In Pi v1.5.0 this is the public shorthand only: system_prompt and tools are
+// folded into a leading SystemMessage by normalize_context (ai/transcript.h)
+// before a provider sees them.  TODO(M3): providers build requests from the
+// resolved transcript, not from these two fields (see convert_messages).
 struct Context {
   str          system_prompt;
   vec<Message> messages;
@@ -194,7 +243,7 @@ struct Context {
 // Milliseconds since the Unix epoch, for message timestamps.
 int64_t now_ms();
 
-// "stop", "length", "toolUse", "error", "aborted".
+// "stop", "length", "toolUse", "error", "aborted", "pending", "deferred".
 strv to_string(StopReason reason);
 // Inverse of to_string; nullopt for anything else (case-sensitive).
 opt<StopReason> parse_stop_reason(strv text);

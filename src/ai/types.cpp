@@ -18,6 +18,9 @@ strv to_string(StopReason reason) {
   break; case StopReason::toolUse: return "toolUse";
   break; case StopReason::error:   return "error";
   break; case StopReason::aborted: return "aborted";
+  // TODO(M3): return "pending" / "deferred".
+  break; case StopReason::pending:  return "";
+  break; case StopReason::deferred: return "";
   }
   assert(false and "invalid StopReason");
   return "";
@@ -29,6 +32,7 @@ opt<StopReason> parse_stop_reason(strv text) {
   if (text == "toolUse") return StopReason::toolUse;
   if (text == "error")   return StopReason::error;
   if (text == "aborted") return StopReason::aborted;
+  // TODO(M3): "pending" and "deferred".
   return s::nullopt;
 }
 
@@ -170,6 +174,16 @@ json::Value encode(const Message& message) {
       mobj.set("timestamp", json::Value(m.timestamp));
       return json::Value(s::move(mobj));
     },
+    [](const SystemMessage& m) -> json::Value {
+      // TODO(M3): see SystemMessage in types.h.  Keys in declaration order:
+      // role, content (string), sections (object; null for nullopt; omitted
+      // when empty), toolsAdded (encode(Tool) each; omitted when empty),
+      // toolsRemoved ([{"name":...}]; omitted when empty), timestamp.
+      (void)m;
+      json::Object mobj;
+      mobj.set("role", json::Value("system"));
+      return json::Value(s::move(mobj));
+    },
   }, message);
 }
 
@@ -189,6 +203,7 @@ json::Value encode(const Model& model) {
   compat_obj.set("supportsReasoningEffort", json::Value(model.compat.supports_reasoning_effort));
   compat_obj.set("supportsUsageInStreaming", json::Value(model.compat.supports_usage_in_streaming));
   compat_obj.set("maxTokensField", json::Value(model.compat.max_tokens_field));
+  // TODO(M3): "supportsMidConvoSystemMessages" after maxTokensField (update the Encode.Model test).
   mobj.set("compat", json::Value(s::move(compat_obj)));
 
   return json::Value(s::move(mobj));
@@ -327,6 +342,7 @@ Fail read_stop_reason(StopReason& out, const json::Object& obj, strv path) {
   if (v == nullptr) return s::nullopt;
   if (auto e = read_string(text, obj, "stopReason", path)) return e;
   opt<StopReason> reason = parse_stop_reason(text);
+  // TODO(M3): list pending and deferred in the expected values.
   if (not reason.has_value())
     return s::format("{}: unknown stop reason \"{}\" (expected stop, length, toolUse, error or aborted)",
                      join(path, "stopReason"), text);
@@ -476,6 +492,16 @@ s::expected<Message, DecodeError> message_at(const json::Value& value, strv path
     if (auto e = read_int(m.timestamp, obj, "timestamp", path))              return s::unexpected(*e);
     return m;
   }
+  if (role == "system"){
+    // TODO(M3): decode SystemMessage (shape in types.h).
+    //  - content: string, or an array of {"type":"text"} blocks joined with "\n"
+    //  - sections: object of string | null (null → nullopt), order kept
+    //  - toolsAdded: read_array with tool_at (defined below: forward-declare it)
+    //  - toolsRemoved: array of {"name": string (required)}
+    //  - timestamp
+    // Then add "system" to the unknown-role message below.
+    return s::unexpected(s::format("{}: system messages are not implemented yet", path));
+  }
   return s::unexpected(s::format("{}: unknown role \"{}\" (expected user, assistant or toolResult)", path, role));
 }
 
@@ -502,6 +528,7 @@ s::expected<Model, DecodeError> model_at(const json::Value& value, strv path) {
     if (auto e = read_bool(c.supports_reasoning_effort, *compat, "supportsReasoningEffort", cpath))     return s::unexpected(*e);
     if (auto e = read_bool(c.supports_usage_in_streaming, *compat, "supportsUsageInStreaming", cpath))  return s::unexpected(*e);
     if (auto e = read_string(c.max_tokens_field, *compat, "maxTokensField", cpath))                     return s::unexpected(*e);
+    // TODO(M3): read_bool "supportsMidConvoSystemMessages" into supports_mid_convo_system_messages.
   }
   return m;
 }

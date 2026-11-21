@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 
+#include <ai/transcript.h>
 #include <http/sse.h>
 #include <json/parse.h>
 #include <json/write.h>
@@ -54,6 +55,8 @@ s::expected<vec<Model>, str> list_models(
 json::Value convert_messages(const Model& model, const Context& context) {
   json::Array array;
 
+  // TODO(M3): replace this block with resolve_transcript(normalize_context(context), ...)
+  // and loop over the transcript instead of context.messages (see header).
   if (not context.system_prompt.empty()){
     if (model.compat.supports_developer_role and model.reasoning)
       array.push_back(json::Value(json::Object{{
@@ -116,6 +119,11 @@ json::Value convert_messages(const Model& model, const Context& context) {
         array.push_back(json::Value(obj));
       },
       [&array](const ToolResultMessage&){/*TODO*/(void)array;},
+      [&array](const SystemMessage&){
+        // TODO(M3): system_message_text() at index 0, render_system_message_update()
+        // later; role "developer" or "system" as for the system prompt above.
+        (void)array;
+      },
     }, msg);
   }
   return json::Value(array);

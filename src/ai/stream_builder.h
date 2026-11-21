@@ -18,6 +18,9 @@ namespace pi::ai {
 // Behaviour:
 //  - the constructor pushes nothing; start() pushes StartEvent (call it once,
 //    before any delta)
+//  - TODO(M3): the constructor stamps stop_reason = pending (Pi: every provider
+//    starts its partial output with stopReason "pending"), so message() reports
+//    pending until finish() / fail() set the real reason
 //  - text_delta / thinking_delta append to the *current* block if it has the
 //    same kind, otherwise close the current block (pushing its *_end) and open
 //    a new one (pushing *_start) at index content().size()
@@ -32,10 +35,12 @@ namespace pi::ai {
 //    block closes, whichever call closed it
 //  - finish(reason) closes the open block, stamps stop_reason, pushes DoneEvent.
 //    Precondition: reason is stop, length or toolUse; error / aborted are routed
-//    to fail() with the message "stream finished with reason <reason>"
+//    to fail() with the message "stream finished with reason <reason>".
+//    TODO(M3): pending and deferred are routed to fail(error, ...) the same way
+//    (Pi fails a stream that ends while still "pending")
 //  - fail(reason, message) does NOT close the open block (no *_end); it stamps
 //    stop_reason and error_message and pushes ErrorEvent.  reason must be error
-//    or aborted (anything else is treated as error)
+//    or aborted (anything else, pending and deferred included, is treated as error)
 //  - after finish() or fail(), every call is a no-op
 struct StreamBuilder {
   // `stream` receives the events; `initial` carries api / provider / model and

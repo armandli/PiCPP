@@ -741,3 +741,37 @@ TEST(OpenAiCompletions, ModelsIsEmptyOnHttpError) {
     OpenAiCompletionsProvider provider(transport);
     EXPECT_TRUE(provider.models().empty());
 }
+
+// ===========================================================================
+// TODO(M3): convert_messages reads the system prompt from the resolved
+// transcript.  These fail until the TODO(M3) in convert_messages is done.
+// ===========================================================================
+
+TEST(ConvertMessages, LeadingSystemMessageInTheTranscriptIsTheSystemPrompt) {
+    Context c;
+    c.messages = {SystemMessage{"be brief", {{"rules", str("<rules>x</rules>")}}, {}, {}, 0},
+                  UserMessage{{TextContent{"hi"}}, 1}};
+    EXPECT_EQ(j::to_json(convert_messages(ollama(), c)),
+              R"([{"role":"system","content":"be brief\n\n<rules>x</rules>"},{"role":"user","content":"hi"}])");
+}
+
+TEST(ConvertMessages, LaterSystemMessagesCollapseForOllama) {
+    Context c = ask("q1", "base");
+    c.messages.push_back(SystemMessage{"also terse", {}, {}, {}, 2});
+    c.messages.push_back(UserMessage{{TextContent{"q2"}}, 3});
+    EXPECT_EQ(j::to_json(convert_messages(ollama(), c)),
+              R"([{"role":"system","content":"base\n\nalso terse"},)"
+              R"({"role":"user","content":"q1"},{"role":"user","content":"q2"}])");
+}
+
+TEST(ConvertMessages, LaterSystemMessageStaysInPlaceWhenSupported) {
+    Model m = ollama();
+    m.compat.supports_mid_convo_system_messages = true;
+    Context c = ask("q1", "base");
+    c.messages.push_back(SystemMessage{"", {{"rules", str("<rules>b</rules>")}}, {}, {}, 2});
+    c.messages.push_back(UserMessage{{TextContent{"q2"}}, 3});
+    EXPECT_EQ(j::to_json(convert_messages(m, c)),
+              R"([{"role":"system","content":"base"},{"role":"user","content":"q1"},)"
+              R"({"role":"system","content":"Updated system prompt section \"rules\":\n\n<rules>b</rules>"},)"
+              R"({"role":"user","content":"q2"}])");
+}
