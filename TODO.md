@@ -14,8 +14,9 @@ Check items off as you go. `M0` through `M2` are done. M3 is done except two ite
 changes; their stubs are marked `TODO(M3)` in the code.
 
 **Definition of done:** PiCPP reproduces everything `@earendil-works/pi-coding-agent@1.5.0` ships, except what
-§0.3 lists as *Not ported*, and the M18 parity suite shows it. M0–M15 port the core agent, M16–M17 port the
-remaining features, and M18 checks the result against Pi itself.
+§0.3 lists as *Not ported*, and the M19 parity suite shows it. M0–M15 port the core agent, M16–M17 port the
+remaining features (extensions are native C++, §0.3), M18 ports the most popular community extensions, and M19
+checks the result against Pi itself.
 
 ---
 
@@ -32,7 +33,7 @@ git clone --branch v0.7.0 https://github.com/MichaelKinsy/PiG    ~/src/pig
 
 **Why pin:** Pi `main` changes constantly, so "full reproduction" of `main` is a moving target. PiG v0.7.0 pins Pi
 1.5.0 (`pig:internal/coding/pigversion/pigversion.go`) and runs its parity suite against it, so these two tags
-describe the same behaviour. This file was checked against Pi v1.5.0. Move the pin only after M18 passes: diff
+describe the same behaviour. This file was checked against Pi v1.5.0. Move the pin only after M19 passes: diff
 Pi's changelog to the next tag, add the new work here as checklist items, and re-clone both references.
 (Pi v1.6.0 was the latest release on 2026-11-20.)
 
@@ -70,6 +71,12 @@ Pi is layered. Each layer only knows the ones below it:
             └────────────────────────────────────────────────────┘
 ```
 
+Every layer from `util` to `tui` builds into one shared library, `libpicpp` (M8), which the `pi` executable,
+the tests and every extension link. Extensions (`src/ext`, M17) are native C++ shared libraries that plug into
+**registries** owned by the layers above: tools and tool hooks (`agent`, M5), providers (`ai`, M7), slash
+commands, keybindings, renderers and UI slots (`coding`/`tui`, M12). PiCPP's own built-in features register
+through those same registries, so the extension API is exercised from day one.
+
 ### 0.3 Pi → PiCPP module map
 
 | Pi package / file                        | PiG                         | PiCPP          |
@@ -89,6 +96,11 @@ Pi is layered. Each layer only knows the ones below it:
 **In scope:** everything `pi-coding-agent@1.5.0` ships, which depends on Pi's `ai`, `agent-core`, `tui`,
 `codemode` and `mcp` packages. Extensions, MCP, codemode, packages and OAuth logins come last, in M17.
 
+**Extensions are native C++, by design.** PiCPP doesn't run Pi's TypeScript/JavaScript extensions or install npm
+packages that contain them. Instead it has a C++ extension API with the same capabilities (M17), and M18
+reimplements the most popular Pi extensions against it. Packages that only carry skills, prompt templates or
+themes still work unchanged: those are Markdown and JSON, not code.
+
 **Not ported:**
 - `durable`, `chord`, `env`, `evals` and the `telemetry` package. The coding agent doesn't depend on them.
 - Inside coding-agent, the parts that report to Earendil's services or only serve Pi's own distribution:
@@ -96,8 +108,10 @@ Pi is layered. Each layer only knows the ones below it:
   upload (`core/bug-report*.ts`, `/bug`), the Radius share destination, self-update and npm version checks, and
   the Bun single-binary build (`src/bun/`).
 - Windows-only code: `tools/powershell.ts`, `utils/windows-self-update.ts`, `utils/wsl.ts`.
+- The TypeScript extension runtime (`core/extensions/{loader,jiti-loader,jiti-static-loader,virtual-modules}.ts`)
+  and `npm:` package sources; see above.
 
-M18 logs each of these as a documented divergence.
+M19 logs each of these as a documented divergence.
 
 ### 0.4 TypeScript → C++ idioms
 
@@ -377,9 +391,21 @@ the difference between a chatbot and an agent.
   - `transform_context(messages, cancel)`: rewrites the context before each model call
   - `before_tool_call` (may block the call → error result) and `after_tool_call` (may replace the result)
   - `get_api_key(provider)`, resolved on every call because keys can expire mid-run; `prepare_next_turn`
+- [ ] **Registries** (the seams M17's extensions plug into; built-in code registers the same way):
+  - `agent/tool_registry`: tools by name, which the loop looks up per call. Built-in tools register into it;
+    registering a name again replaces the tool (Pi's `tool-override.ts` example). Tools can be added or removed
+    while the agent is idle (Pi's `dynamic-tools.ts`)
+  - tool hook chains: `before_tool_call` and `after_tool_call` hold **lists** of handlers, not one callback.
+    They run in registration order, with Pi's composition rules (`docs/extensions.md`, "Handler Composition"):
+    a `before_tool_call` handler can mutate the input in place for later handlers, the first one that blocks
+    stops the call (a gate: fail closed), and each `after_tool_call` handler receives the result returned by the
+    previous one (a chained transformation)
+  - handles: registering returns a `Subscription` that unregisters on destruction or `reset()`, so `/reload` can
+    drop everything an extension added
 - [ ] Tests (faux provider): text-only turn; tool call → result → final text; unknown tool; invalid args;
       tool throws → `is_error` result; event order matches Pi exactly; blocked tool call; replaced tool result;
-      custom message converted or dropped by `convert_to_llm`
+      custom message converted or dropped by `convert_to_llm`; two hook handlers chain in order and the first
+      block wins; a replaced tool; a `Subscription` going away removes its handler
 
 ### First tools
 - [ ] `tools/truncate`: `truncate_head` / `truncate_tail` — 2000 lines / 50 KB defaults, result metadata
@@ -484,7 +510,9 @@ The agent writes files, runs `make`, reads the error output and fixes its own mi
         "apiKey":"ollama","models":[{"id":"qwen3.8:27b-mlx","contextWindow":32768}]}}}
       ```
       `apiKey` values: literal, `$ENV`/`${ENV}`, or `!shell command`
-- [ ] `ai/registry`: providers + models by `provider/id`; merges static config with dynamic `/v1/models`
+- [ ] `ai/registry`: providers + models by `provider/id`; merges static config with dynamic `/v1/models`.
+      It's a registry in the M5 sense: built-in providers register into it, and M17 extensions add and remove
+      providers and models (including virtual models) through the same calls
 - [ ] Tests: prompt snapshot against a golden file; context-file discovery in a nested temp tree; settings merge
       precedence; agent-dir-only keys ignored in project settings; env/`!cmd` key resolution; trust decision
       matrix (protected resource × setting × flag); stdin + `@file` + message combination; section diff patches
@@ -523,6 +551,21 @@ it works.
       `pi:ai/src/utils/provider-retry.ts`); a pending retry can be cancelled (RPC `abort_retry` in M14)
 - [ ] Tests: abort mid-stream and mid-tool; parallel results ordering with tools that sleep different amounts;
       steering message lands between turns; retry counts with a flaky fake transport
+
+### Build: `libpicpp`
+Do this before M9: the TUI adds many `.cpp` files, and M17's extensions need the core as a shared library to
+link against.
+- [ ] `cmake/PiModule.cmake`: the modules `util` → `tui` stop being separate STATIC libraries and build into one
+      SHARED library, `libpicpp` (alias `pi::core`). `modes` and `main.cpp` stay in the `pi` executable, which
+      links `pi::core`, and so do the tests. Keep the per-module source layout and the "may only depend on
+      modules above it" rule (check it with a test that greps `#include`s, since CMake no longer enforces it)
+- [ ] Symbol visibility: export the public API. Start with default visibility; move to `-fvisibility=hidden`
+      plus a `PICPP_API` export macro only if load times or symbol clashes call for it
+- [ ] Runtime lookup: `pi` and the test executables find `libpicpp` through an rpath (`@loader_path/...` on macOS,
+      `$ORIGIN/...` on Linux), so `make run` and `make test` work without `DYLD_LIBRARY_PATH`
+- [ ] Sanitizer builds (`PICPP_SANITIZE`) keep working: the shared library and everything linking it are built
+      with the same flags
+- [ ] Tests: the full suite passes unchanged against the shared library
 
 **Read:** `pi:agent/src/agent.ts`, `pi:ai/src/utils/{retry,provider-retry,overflow}.ts`, `pig:agent/lifecycle.go`,
 `pig:agent/tool_execution.go`.
@@ -644,7 +687,18 @@ dropping the start of the conversation.
       `markdown.codeBlockIndent`; mermaid diagrams (`markdown.mermaid`) are optional
 - [ ] Edit-tool diff rendering (red/green lines from `details`), bash output tail with expand/collapse (Ctrl-O),
       thinking show/hide (Ctrl-T); per-tool renderers as in `core/tools/renderers/`
-- [ ] `coding/slash_commands` registry + dispatcher for all 24 Pi built-ins (`core/slash-commands.ts`).
+- [ ] **UI registries** (M17 extensions plug into these; built-ins register the same way):
+  - `tui/renderer_registry`: tool name → renderer for its call and result (`ftxui::Element`), with a default for
+    unknown tools. The built-in renderers from `core/tools/renderers/` register here, and a later registration
+    for the same tool wins (Pi: `registerToolRenderer`)
+  - message and entry renderers keyed by custom type, for custom messages and entries (Pi:
+    `registerMessageRenderer`, `registerEntryRenderer`)
+  - UI slots that extensions can fill: widgets above or below the editor, a status line, footer segments, the
+    header, and overlays (Pi examples `widget-placement.ts`, `status-line.ts`, `custom-footer.ts`,
+    `custom-header.ts`, `overlay-test.ts`)
+- [ ] `coding/slash_commands` registry + dispatcher for all 24 Pi built-ins (`core/slash-commands.ts`). Built-in
+      commands register through the same call extensions will use; a name collision is reported, not silently
+      overwritten (Pi's resource collision diagnostics).
       In this milestone: `/model` selector (Ctrl-L), `/settings` (settings selector + submenus),
       `/scoped-models`, `/hotkeys`, `/copy`, `/changelog`, `/reload` (keybindings, skills, prompts, themes,
       context files; extensions after M17), `/trust` (trust selector), `/export`, `/share`, `/quit`.
@@ -664,7 +718,8 @@ dropping the start of the conversation.
       (`externalEditor` setting, then `$VISUAL`, then `$EDITOR`; `modes/interactive/external-editor.ts`)
 - [ ] `tui/keybindings`: action → key registry with `~/.pi/agent/keybindings.json` overrides (no hard-coded keys).
       Port every action in `docs/keybindings.md` with its default key (e.g. `app.message.copy` Ctrl-X,
-      `app.thinking.toggle` Ctrl-T, `app.tools.expand` Ctrl-O)
+      `app.thinking.toggle` Ctrl-T, `app.tools.expand` Ctrl-O). Extensions register new actions and shortcuts
+      here (Pi: `registerShortcut`); reserved keys can't be taken
 - [ ] `tui/theme`: theme roles (accent, muted, error, diff add/remove, ...) → FTXUI decorators. Built-in dark and
       light themes, system light/dark detection, theme JSON files (`docs/themes.md`,
       `modes/interactive/theme/theme-schema.ts`) from the agent dir and `.pi/themes/` (trusted projects only),
@@ -687,7 +742,7 @@ dropping the start of the conversation.
       `rg --json --line-number --color=never --hidden`; lines cut at 500 chars
 - [ ] `tools/find {pattern, path?, limit?=1000}` via `fd --glob --color=never --hidden`
 - [ ] Getting `rg`/`fd`: Pi downloads them when they're missing (`utils/tools-manager.ts`). Port that, or require
-      them on `PATH` and log the divergence (M18)
+      them on `PATH` and log the divergence (M19)
 - [ ] `defaultTools` setting (`+grep`, `-bash`) and the read-only tool set
 - [ ] `coding/skills`: discover `skills/**/SKILL.md` (frontmatter `name`, `description`) and list them in the
       system prompt's `skills` section as `<available_skills>`, with a hint naming the tool that reads them (`read`,
@@ -791,60 +846,221 @@ dropping the start of the conversation.
 
 ---
 
-## M17 — Extensibility: extensions, MCP, codemode, packages, OAuth
+## M17 — Extensibility: native C++ extensions, MCP, codemode, packages, OAuth
 
-**Goal:** the rest of what `pi-coding-agent@1.5.0` ships. Unmodified Pi extensions and packages run on PiCPP.
+**Goal:** the rest of what `pi-coding-agent@1.5.0` ships. Extensions are C++ shared libraries written against a
+C++ version of Pi's `ExtensionAPI`, built with the same toolchain as PiCPP ("build key" model: one compiler,
+standard library, FTXUI and PiCPP version; anything else is refused). Running Pi's TypeScript extensions is out of
+scope (§0.3).
 
-### Extensions
-- [ ] `ext/host`: serve Pi's `ExtensionAPI` (`pi:coding-agent/src/core/extensions/types.ts`, `docs/extensions.md`)
-      to extension subprocesses over JSONL (PiG: `pig:coding/extension/host/subprocess/`). Extensions can:
-  - register tools, slash commands, keyboard shortcuts, CLI flags, providers and models, and tool renderers
-  - subscribe to session and agent events; `tool_call` / `tool_result` handlers sit on M5's `before_tool_call` /
-    `after_tool_call`
-  - send custom messages and entries
-  - drive the UI: select, confirm, input, editor, notify, widgets
-- [ ] TypeScript extensions run **unchanged**: a generated Node runner loads each extension's default export and
-      bridges `ExtensionAPI` over the wire (`pig:coding/extension/host/tsruntime/`,
-      `pig:docs/extension-runtime-cells.md`). PiG doesn't embed a JS engine for extensions; follow it
-- [ ] Loading: `~/.pi/agent/extensions/`, `.pi/extensions/` (trusted projects only), the `extensions` setting,
-      `-e/--extension`, `--no-extensions/-ne`. `/reload` calls every factory again
-- [ ] Virtual models registered by extensions (`docs/virtual-models.md`, `core/virtual-models.ts`)
-- [ ] RPC `extension_ui_request` / `extension_ui_response` (`docs/rpc-extension-ui.md`)
+### Extension API
+- [ ] `src/ext/api.h`: `pi::ext::ExtensionApi`, the C++ mirror of Pi's `ExtensionAPI` and `ExtensionContext`
+      (`pi:coding-agent/src/core/extensions/types.ts`, `docs/extensions.md`). Go through every `pi.*` method,
+      every `ctx.*` member and every event in that doc, map each one, and keep a table in `src/ext/README.md`
+      of anything that has no C++ equivalent. The main groups:
+  - registration: `register_tool` (into M5's tool registry; same name replaces), `register_command`,
+    `register_shortcut`, `register_flag`, `register_provider` / `unregister_provider`, virtual models,
+    `register_mcp_server`, `register_tool_renderer`, `register_message_renderer`, `register_entry_renderer`,
+    `register_markdown_transformer`
+  - events (`on(...)`): lifecycle, resource, session, agent, model, tool (`tool_call` → M5 `before_tool_call`,
+    `tool_result` → `after_tool_call`), user-bash and input events, with Pi's composition rules (notification,
+    in-place mutation, chained transformation, gate, last override)
+  - actions: `send_message`, `send_user_message`, `append_entry`, `set_session_name`, `set_label`, `set_model`,
+    thinking level, `exec`, `get_commands`, `get_settings`, an inter-extension event bus (`pi.events`)
+  - context: `ui()` (notify, confirm, select, input, editor, overlays, widgets, status, footer), `mode()`,
+    `has_ui()`, `cwd()`, `is_project_trusted()`, session manager, model registry, the cancel token, `is_idle()`,
+    `abort()`, `compact()`, `get_context_usage()`, `get_system_prompt()`; command-only context: `new_session`,
+    `fork`, `navigate_tree`, `switch_session`, `reload`, `wait_for_idle`
+- [ ] Renderers and UI return real **FTXUI** values (`ftxui::Element`, `ftxui::Component`): no serialization,
+      because extensions are built against the same FTXUI
+- [ ] Entry points: every extension library exports exactly two symbols, `extern "C" const char*
+      pi_extension_build_key()` and `extern "C" void pi_extension_register(pi::ext::ExtensionApi&)`. A
+      `PI_EXTENSION(name)` macro defines both; extensions build with `-fvisibility=hidden`
+- [ ] Build key: compiler id and version, standard library, C++ standard, PiCPP version, `pi::ext::API_VERSION`,
+      FTXUI version, and the ABI-affecting flags (sanitizers, `_GLIBCXX_DEBUG`/libc++ hardening mode). Generated at
+      configure time into a header both the host and the extension see; a mismatch refuses to load and names the
+      first differing field
 
-### Built-in extensions (`pi:coding-agent/src/extensions/`)
+### Host and loading
+- [ ] `src/ext/host`: implements `ExtensionApi` on top of the M5/M7/M12 registries. Each extension gets its own
+      `ExtensionApi` instance that records its `Subscription`s, so unloading an extension is dropping that instance
+- [ ] Two ways in, one path: built-in extensions are compiled into `pi` and listed in one explicit table in
+      `src/ext/builtins.cpp` (no static-initializer self-registration: static libraries drop unreferenced
+      objects); dynamic ones are loaded with `dlopen`. Both call the same `pi_extension_register`
+- [ ] Loader: `dlopen(path, RTLD_NOW | RTLD_LOCAL)`, `dlsym` both entry points, compare build keys, register.
+      **Never `dlclose`**: code from the library may still be referenced by `std::function`s, vtables or
+      `thread_local`s
+- [ ] Discovery: `~/.pi/agent/extensions/` (`*.so` / `*.dylib`, or a directory holding one),
+      `.pi/extensions/` **only in trusted projects** (loading a library runs its code), the `extensions` setting,
+      `-e/--extension <path>`, `--no-extensions/-ne`. Load order follows Pi's, since handler order depends on it
+- [ ] Boundary rules, enforced by the host:
+  - every call into extension code is wrapped in `try`/`catch`: a throw becomes an `is_error` tool result or a
+    logged extension error, never a crash; gate handlers that throw count as "block" (fail closed)
+  - extension handlers run on the agent thread; `ui()` calls marshal to the UI thread with `screen.Post` and block
+    on a future (M9's rule); no extension touches FTXUI state from another thread
+  - every handler gets the turn's `util::CancelToken`; cancellation is cooperative
+- [ ] `/reload`: drop every extension's registrations and call `pi_extension_register` again on a fresh
+      `ExtensionApi`, so in-memory state resets as Pi's does. To pick up a **rebuilt** library, copy it to a
+      unique temporary path and `dlopen` the copy (the old one stays mapped). Log this as a divergence: code reload
+      is for development
+- [ ] RPC `extension_ui_request` / `extension_ui_response` (`docs/rpc-extension-ui.md`), so `ui()` works in
+      `--mode rpc`; with no UI at all (`-p`, json mode), `has_ui()` is false and `ui()` calls fail fast
+- [ ] SDK for extension authors: installed headers plus a CMake package (`find_package(PiCPP)`) providing
+      `pi_add_extension(<name> <sources>...)`, which sets visibility, the build key and the output name. In-tree
+      extensions live in `extensions/<name>/` and build with `make`
+- [ ] Test fixtures: port the Pi examples that exercise the API to C++ under `test/ext/fixtures/` and load them
+      with `dlopen` in tests: `hello`, `commands`, `confirm-destructive`, `dynamic-tools`, `tool-override`,
+      `input-transform`, `message-renderer`, `entry-renderer`, `widget-placement`, `status-line`, `event-bus`,
+      `send-user-message`, `reload-runtime`
+- [ ] Tests: build-key mismatch refused with the differing field named; throwing handler → error result;
+      throwing gate blocks; blocking `tool_call`; chained `tool_result`; `ui()` called from the agent thread;
+      `/reload` resets extension state; `.pi/extensions/` ignored in an untrusted project; load order decides
+      handler order
+
+### Built-in extensions (`pi:coding-agent/src/extensions/`), written against `pi::ext` and linked into `pi`
 - [ ] MCP: port `pi:mcp` and `extensions/mcp`. Server config in `mcp.json` (`docs/mcp.md`); stdio and streamable
       HTTP transports (legacy SSE is unsupported); MCP tools as `AgentTool`s; resources; OAuth for HTTP servers;
       `--no-mcp`
-- [ ] Codemode: port `pi:codemode` and `extensions/codemode`. Model-written JavaScript runs in a QuickJS sandbox
-      (add quickjs-ng via FetchContent) and calls the agent's tools. Settings `codemode.mode`,
-      `codemode.inlineBudget`; it can also call non-chat models such as classifiers and image models
-      (`docs/codemode.md`)
+- [ ] Codemode: port `pi:codemode` and `extensions/codemode`. The model still writes JavaScript, so this still
+      embeds a QuickJS sandbox (quickjs-ng via FetchContent) that calls the agent's tools. Settings
+      `codemode.mode`, `codemode.inlineBudget`; it can also call non-chat models such as classifiers and image
+      models (`docs/codemode.md`)
 - [ ] `tool_search`: registered inactive; when activated (`--tools`, `defaultTools`), the model can find and enable
       tools on demand (`extensions/tool-search/`)
 - [ ] `llama`: llama.cpp provider with Hugging Face model downloads (`extensions/llama/`, `docs/llama-cpp.md`)
 
 ### Packages, OAuth, SDK
-- [ ] Packages (`package-manager-cli.ts`, `docs/packages.md`): `pi install|remove|update|list` from `npm:`,
-      `git:` or local sources, bundling extensions, skills, prompts and themes; `packages` setting, `npmCommand`
+- [ ] Packages (`package-manager-cli.ts`, `docs/packages.md`): `pi install|remove|update|list` from `git:` or
+      local sources. Skills, prompt templates and themes install as-is; C++ extensions in a package are **built
+      from source** against the installed SDK (`find_package(PiCPP)`), so installing one needs a C++ toolchain.
+      `npm:` sources are not supported (§0.3). `packages` setting
 - [ ] OAuth subscription logins in `/login` (`pi:ai/src/auth/oauth/`: PKCE with a local callback server, device
       code), for every provider listed there (Anthropic, GitHub Copilot, OpenAI Codex/ChatGPT, ...). Tokens
       refresh through `get_api_key` (M5); this unlocks `openai-codex-responses` (M15)
-- [ ] SDK: expose `coding::AgentSession` plus resource loading as a library others can embed (`docs/sdk.md`,
+- [ ] SDK: `libpicpp` plus `coding::AgentSession` and resource loading as an embeddable library (`docs/sdk.md`,
       `core/sdk.ts`)
-- [ ] Sub-agents / plan mode as extensions (Pi leaves them out of the core on purpose; build them to see why)
-- [ ] Tests: wire-protocol round trips for each `ExtensionAPI` call; a blocking `tool_call` handler; an MCP stdio
-      server fixture; codemode sandbox limits; package install from a local directory; OAuth PKCE with a fake
-      callback
+- [ ] Tests: an MCP stdio server fixture; codemode sandbox limits; package install from a local directory that
+      contains a skill and a C++ extension; OAuth PKCE with a fake callback
 
 **Read:** `pi:coding-agent/docs/{extensions,mcp,codemode,packages,sdk,virtual-models}.md`,
-`pig:docs/{extensions,extension-runtime-cells}.md`, `pig:coding/extension/`.
+`pi:coding-agent/src/core/extensions/{types,runner}.ts`, `pi:coding-agent/examples/extensions/`.
 
-**Demo:** run unmodified extensions from `pi:coding-agent/examples/extensions/` (e.g. `confirm-destructive.ts`,
-`commands.ts`), then add an MCP server and call its tools.
+**Demo:** build `test/ext/fixtures/confirm_destructive` out of tree with `find_package(PiCPP)`, drop the library
+into `~/.pi/agent/extensions/`, ask the agent to `rm -rf build`, and answer the confirmation dialog. Then add an
+MCP server and call its tools.
 
 ---
 
-## M18 — Parity verification
+## M18 — Popular extensions, in C++
+
+**Goal:** PiCPP ships C++ versions of the extensions Pi users install most, each giving the same functionality
+as the Pi package it is modelled on. They live in `extensions/<name>/`, build as loadable libraries by default
+(`PICPP_BUNDLE_EXTENSIONS=ON` links them into `pi` through the built-in table instead), and each has faux-provider
+tests in `test/extensions/<name>/`.
+
+**How this list was chosen** (2026-11-20): npm monthly downloads of `pi-package`-tagged packages (the same figure
+the [pi.dev/packages](https://pi.dev/packages) gallery ranks by), Composio's
+["Top 10 Pi Agent Extensions"](https://composio.dev/blog/top-pi-extensions) (Aug 2026), and the 🔥 marks in
+[awesome-pi](https://github.com/BubblePtr/awesome-pi). Packages were merged by capability, and Pi's own examples
+(`pi:coding-agent/examples/extensions/`) were added where they cover the same feature. Download counts are noisy:
+re-check them before starting.
+
+**Reimplement, don't copy:** port from each package's documented behaviour. Check its license before reusing any
+code or prompt text.
+
+### Tier 1 — the workflow staples
+- [ ] `permissions`, modelled on **cc-safety-net** (197K/mo) and **@gotgenes/pi-permission-system** (49K/mo, 🔥),
+      plus Pi's `permission-gate.ts`, `protected-paths.ts`, `confirm-destructive.ts`, `dirty-repo-guard.ts`:
+      allow / deny / ask rules per tool, path glob and bash command pattern, from `~/.pi/agent/permissions.json`
+      and `.pi/permissions.json` (trusted projects only); built-in detection of destructive commands
+      (`rm -rf`, `git reset --hard`, `git push --force`, ...) and secret files (`.env`, private keys); `ask`
+      uses `ui().confirm`, and with no UI it fails closed; an audit log as custom entries.
+      *Exercises:* `tool_call` gate, `ui()`, custom entries
+- [ ] `ask_user`, modelled on **@juicesharp/rpiv-ask-user-question** (182K/mo, Composio, 🔥) and Pi's
+      `question.ts` / `questionnaire.ts`: a tool the model calls with structured questions (options,
+      multi-select, free-text "other"), shown as an FTXUI dialog, answers returned as the tool result; with no UI
+      it returns an error telling the model to state its assumption and continue.
+      *Exercises:* tool + custom overlay + renderer
+- [ ] `todo`, modelled on **@juicesharp/rpiv-todo** (89K/mo, Composio, 🔥) and Pi's `todo.ts`: a `todo` tool
+      (add, update, complete, remove, list) whose state is stored as custom entries, so it survives `/reload`,
+      compaction and resume, and follows the current branch of the session tree; a live widget above the editor.
+      *Exercises:* `append_entry`, session events, widget slot
+- [ ] `plan_mode`, modelled on **@narumitw/pi-plan-mode** (38K/mo, 🔥), **@plannotator/pi-extension** (99K/mo,
+      Composio) and Pi's `plan-mode/`: `/plan` switches to read-only (the gate allows `read`, `ls`, `grep`,
+      `find` and read-only bash), adds a planning section to the system prompt as an M7 `SystemMessage` patch,
+      saves the plan to a file, and leaving the mode sends the plan as the next prompt. Plannotator's browser
+      annotation UI is out of scope.
+      *Exercises:* command, gate, system prompt patch, status indicator
+- [ ] `subagents`, modelled on **pi-subagents** (1.1M/mo, Composio, 🔥), **@tintinweb/pi-subagents** (85K/mo, 🔥)
+      and Pi's `subagent/`: a `subagent` tool that runs a child agent with its own context, tools and model on
+      a task; agent definitions as Markdown files with frontmatter (name, description, tools, model) in
+      `~/.pi/agent/agents/` and `.pi/agents/`; single, parallel and chained runs; optional git worktree
+      isolation; live progress through `tool_execution_update`; Ctrl-C aborts the children. Pi's example spawns
+      `pi --mode json -p --no-session` per child; an in-process child `AgentSession` on its own thread is the
+      C++ alternative. Pick one and record why.
+      *Exercises:* streaming tool updates, cancellation, renderers
+- [ ] `web_access`, modelled on **pi-web-access** (1.5M/mo, Composio, 🔥), **@juicesharp/rpiv-web-tools** (🔥) and
+      **@ollama/pi-web-search** (🔥): `web_search` with pluggable backends (self-hosted SearXNG, Ollama's web
+      search API, Brave, Tavily), `web_fetch` (HTML → readable text/Markdown, truncated like `read`), PDF text
+      extraction (via `pdftotext` when installed), and a shallow `github_clone` into a cache directory that the
+      normal tools then read. YouTube understanding is out of scope.
+      *Exercises:* `http` module, settings, tool registration
+- [ ] `mcp_proxy`, modelled on **pi-mcp-adapter** (2.3M/mo, Composio, 🔥): an alternative mode for M17's MCP
+      client that exposes **one** `mcp` tool (search servers and tools, describe, call) instead of every
+      server's tools, and starts servers lazily on first use, so MCP costs almost no context until it's needed.
+      *Exercises:* dynamic tools, M17 MCP
+- [ ] `lens`, modelled on **pi-lens** (115K/mo, Composio, 🔥) and **@narumitw/pi-lsp** (🔥): after every `write` or
+      `edit`, collect diagnostics and append them to the tool result, so the agent sees its own errors at once.
+      An LSP client over stdio (JSON-RPC with `Content-Length` framing, not JSONL) with per-language server
+      config (clangd for this repo), plus optional formatter and linter commands.
+      *Exercises:* chained `tool_result`, `util/subprocess`
+
+### Tier 2 — quality of life
+- [ ] `btw`, modelled on **pi-btw** (37K/mo, 🔥): `/btw <question>` answers a side question using the current
+      context and shows it in an overlay; nothing is added to the session
+- [ ] `status_line`, modelled on **pi-powerline-footer** (35K/mo, 🔥), **@narumitw/pi-statusline** (🔥) and Pi's
+      `status-line.ts` / `custom-footer.ts` / `model-status.ts`: a powerline footer with cwd, git branch and
+      dirty state, model, thinking level, tokens, cost and context %
+- [ ] `notify`, modelled on Pi's `notify.ts` (and awesome-pi's `notify`): a terminal notification when the agent
+      finishes and waits for input (OSC 777 for Ghostty / iTerm2 / WezTerm, OSC 99 for Kitty). The smallest
+      extension here, so a good first one to write
+- [ ] `git_checkpoint`, modelled on Pi's `git-checkpoint.ts`: a git stash checkpoint at each turn, so `/fork`
+      can offer to restore the code to that point in history
+- [ ] `memory`, modelled on **pi-memory** (94K/mo) and **pi-hermes-memory** (🔥): `memory_write` /
+      `memory_search` tools over Markdown files in `~/.pi/agent/memory/` and `.pi/memory/`, indexed with SQLite
+      FTS5 (add the SQLite amalgamation via FetchContent), with a short index injected as a system prompt section
+- [ ] `context_store`, modelled on **context-mode** (213K/mo, Composio, 🔥) and **pi-context-prune**: tool outputs
+      above a size threshold are stored in the FTS5 store from `memory` and replaced in context by a summary and a
+      handle; a `context_search` tool pulls slices back. Measure tokens per session with and without it on the
+      same M19 scenario
+
+### Tier 3 — larger, optional
+- [ ] `interactive_shell`, modelled on **pi-interactive-shell** (🔥) and Pi's `interactive-shell.ts`: run
+      interactive programs (vim, psql, ssh) in an overlay. Needs a PTY (`forkpty`) and a terminal emulator that
+      draws the screen grid into FTXUI (consider libvterm). The hardest UI work in this list
+- [ ] `goal`, modelled on **pi-goal-x** (36K/mo) and **@narumitw/pi-goal**: `/goal <objective>` keeps queuing
+      follow-ups (M8) until the model reports the goal met or a turn / token / time budget runs out; progress is
+      kept in custom entries
+- [ ] Browser automation (**pi-agent-browser-native**, **pi-chrome** 🔥, **@onkernel/browser-loop** 194K/mo):
+      covered by connecting a browser-automation MCP server through M17. A native Chrome DevTools Protocol
+      extension needs a WebSocket client; build it only if MCP falls short
+
+### Deliberately not ported
+- Vendor integrations (**@postman/postman-plugin**, **@datadog/pi-plugin**, **@langchain/langsmith-pi-extension**,
+  **@braintrust/pi-extension**, Composio): connect the vendor's MCP server through M17, or install their skills
+  as-is where the package is skills-only
+- **pi-claude-bridge**: it is built on the TypeScript Claude Agent SDK
+- **billion-context**: the highest download count in the gallery (3.9M/mo) but only 4 dependents, so the number
+  is probably inflated; read what it actually does before deciding
+- **openwiki**, **glimpseui**: standalone tools rather than Pi extensions; **@juicesharp/rpiv-i18n**: localization
+  for the rpiv skills
+
+**Demo:** in a fresh project, `/plan` a feature, approve it, watch `subagents` split the work while `lens` feeds
+clangd errors back into each edit and `permissions` stops a `git push --force`.
+
+---
+
+## M19 — Parity verification
 
 **Goal:** prove the reproduction instead of claiming it.
 
@@ -853,15 +1069,18 @@ dropping the start of the conversation.
       normalizing ids, timestamps and paths. On the Pi side, load the faux model as an extension
       (`pig:test/parity/testdata/test-faux-provider.ts`); on PiCPP, use the built-in faux behind
       `PI_TEST_FAUX`. Start from PiG's scenario families in `pig:test/parity/scenarios/`
+- [ ] Extension parity: for each Pi example ported in M17 and each extension in M18, a scenario run on Pi (with
+      the TypeScript original) and PiCPP (with the C++ port) that compares the observable behaviour: tool
+      results, blocked calls, entries written, messages sent
 - [ ] Golden outputs taken from Pi itself: system prompt text, every tool's output on shared fixtures, `--help`,
       the settings and keybinding tables
 - [ ] Session files work both ways: Pi resumes a PiCPP session and PiCPP resumes a Pi one
-- [ ] `docs/divergences.md`: every intentional difference, with its reason (Ollama native API, how `rg`/`fd` are
-      found, everything §0.3 doesn't port)
+- [ ] `docs/divergences.md`: every intentional difference, with its reason (native C++ extensions, Ollama native
+      API, how `rg`/`fd` are found, extension code reload, everything §0.3 doesn't port)
 - [ ] `docs/port_map.md`: every Pi v1.5.0 source file → its PiCPP file or "not ported" (model:
       `pig:docs/parity/PORT_MAP.md`, `pig:test/parity/coverage.md`)
 - [ ] Bump procedure: diff Pi's changelog to the next tag, add the new work to this file, re-pin both references
-      (§0.1)
+      (§0.1); re-check the M18 popularity list at the same time
 
 **Read:** `pig:test/parity/README.md`, `pig:test/parity/AGENTS.md`.
 
@@ -870,10 +1089,12 @@ dropping the start of the conversation.
 ## Appendix — Milestone dependency summary
 
 ```
-M1 ─► M2 ─► M3 ─► M4 ─► M5 ─► M6 ─► M7 ─► M8 ─► M9 ─► M10 ─► M11 ─► M12 ─► M16 ─► M17 ─► M18
+M1 ─► M2 ─► M3 ─► M4 ─► M5 ─► M6 ─► M7 ─► M8 ─► M9 ─► M10 ─► M11 ─► M12 ─► M16 ─► M17 ─► M18 ─► M19
                                │                  └──► M14     └──► M13
                                └──────────────────────────────────► M15 (any time after M8)
 ```
 
-M17 needs M12–M15 as well (commands, skills, RPC, providers). M18 can start as soon as M14 exists: add scenarios
-as each feature lands, rather than all at the end.
+M8 ends with the `libpicpp` split, which M9 onward builds on. M17 needs M12–M15 as well (registries, commands,
+skills, RPC, providers). M18's extensions are independent of each other; `context_store` builds on `memory`,
+`mcp_proxy` on M17's MCP client. M19 can start as soon as M14 exists: add scenarios as each feature lands, rather
+than all at the end.
